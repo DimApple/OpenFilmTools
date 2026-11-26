@@ -1,0 +1,330 @@
+--- a/src/ingest_widget.cpp
++++ b/src/ingest_widget.cpp
+@@ -76,10 +76,6 @@
+     auto* layout = new QVBoxLayout(this);
+     layout->setContentsMargins(18, 14, 18, 14);
+     layout->setSpacing(14);
+-    projectContext = sectionLabel("Standalone ingest", this);
+-    projectContext->setTextFormat(Qt::PlainText);
+-    layout->addWidget(projectContext);
+-
+     auto* sourceGroup = new QGroupBox("Source", this);
+     sourceGroup->setObjectName("ingestSection");
+     auto* sourceLayout = new QVBoxLayout(sourceGroup);
+@@ -221,8 +217,6 @@
+             prompt.exec();
+             if (prompt.clickedButton() == create || prompt.clickedButton() == open)
+                 chooseProject(prompt.clickedButton() == create);
+-            if (!projectPath().isEmpty())
+-                projectContext->setText("Project: " + QFileInfo(projectPath()).completeBaseName());
+         }
+         *indexed = false;
+         status->hide();
+@@ -413,12 +407,3 @@
+     cancelled.store(true);
+     worker.waitForDone();
+ }
+-
+-
+-void IngestWidget::showEvent(QShowEvent* event)
+-{
+-    QWidget::showEvent(event);
+-    const auto path = projectPath();
+-    projectContext->setText(path.isEmpty() ? "Standalone ingest"
+-                                           : "Project: " + QFileInfo(path).completeBaseName());
+-}
+--- a/src/ingest_widget.hpp
++++ b/src/ingest_widget.hpp
+@@ -4,20 +4,13 @@
+ #include <atomic>
+ #include <functional>
+ 
+-class QLabel;
+-class QShowEvent;
+-
+ class IngestWidget : public QWidget {
+ public:
+     IngestWidget(std::function<QString()> projectPath, std::function<void(const QString&)> mediaLinked, std::function<void(bool)> chooseProject, QWidget* parent = nullptr);
+     ~IngestWidget() override;
+ 
+-protected:
+-    void showEvent(QShowEvent* event) override;
+-
+ private:
+     std::function<QString()> projectPath;
+-    QLabel* projectContext;
+     std::atomic_bool cancelled{false};
+     QThreadPool worker;
+     QString reportDirectory;
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -6,6 +6,8 @@
+ 
+ #include <QButtonGroup>
+ #include <QFileInfo>
++#include <QFileDialog>
++#include <QGridLayout>
+ #include <QHBoxLayout>
+ #include <QMainWindow>
+ #include <QMenu>
+@@ -20,13 +22,15 @@
+ #include <QWindow>
+ 
+ namespace {
+-QIcon workspaceIcon(int index)
++QPixmap workspacePixmap(int index, const QColor& color)
+ {
+-    QPixmap bitmap(24, 24);
++    QPixmap bitmap(32, 32);
++    bitmap.setDevicePixelRatio(2);
+     bitmap.fill(Qt::transparent);
+     QPainter p(&bitmap);
+     p.setRenderHint(QPainter::Antialiasing);
+-    p.setPen(QPen(QColor("#eee8fa"), 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
++    p.scale(16.0 / 24, 16.0 / 24);
++    p.setPen(QPen(color, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+     if (index == 0) {
+         p.drawLine(12, 3, 12, 14);
+         p.drawPolyline(QPolygon{{7, 10}, {12, 15}, {17, 10}});
+@@ -45,7 +49,7 @@
+         p.drawPolyline(QPolygon{{4, 8}, {20, 8}, {16, 4}});
+         p.drawPolyline(QPolygon{{20, 16}, {4, 16}, {8, 20}});
+     }
+-    return QIcon(bitmap);
++    return bitmap;
+ }
+ }
+ 
+@@ -64,41 +68,61 @@
+ 
+     auto* header = new QWidget(shell);
+     header->setObjectName("appHeader");
+-    auto* headerLayout = new QHBoxLayout(header);
+-    headerLayout->setContentsMargins(20, 8, 20, 8);
++    header->setFixedHeight(48);
++    auto* headerLayout = new QGridLayout(header);
++    headerLayout->setContentsMargins(16, 0, 16, 0);
++    headerLayout->setColumnStretch(0, 1);
++    headerLayout->setColumnStretch(2, 1);
++    headerLayout->setColumnMinimumWidth(0, 240);
++    headerLayout->setColumnMinimumWidth(2, 240);
++    auto* brand = new QWidget(header);
++    auto* brandLayout = new QHBoxLayout(brand);
++    brandLayout->setContentsMargins(0, 0, 0, 0);
++    brandLayout->setSpacing(8);
+     auto* name = new QLabel("OpenRoll", header);
+     name->setObjectName("appName");
+     auto* project = new QToolButton(header);
+     project->setObjectName("projectMenu");
+-    project->setText("Project");
++    project->setText("No project");
++    project->setFixedHeight(32);
++    project->setMaximumWidth(240);
++    project->setProperty("emptyProject", true);
+     project->setPopupMode(QToolButton::InstantPopup);
+     project->setToolButtonStyle(Qt::ToolButtonTextOnly);
+     auto* menu = new QMenu(project);
+     project->setMenu(menu);
+-    QPixmap mark(32, 32);
++    QPixmap mark(40, 40);
++    mark.setDevicePixelRatio(2);
+     mark.fill(Qt::transparent);
+     {
+         QPainter painter(&mark);
+         painter.setRenderHint(QPainter::Antialiasing);
+-        const QList<QColor> colors{QColor("#a16aef"), QColor("#d1b0fa"), QColor("#f0eef5")};
++        const QList<QColor> colors{QColor(OpenRollTheme::tokens.value("@muted")), QColor(OpenRollTheme::tokens.value("@text")), QColor(OpenRollTheme::tokens.value("@text"))};
+         for (int i = 0; i < colors.size(); ++i) {
+-            painter.setPen(QPen(colors[i], 4, Qt::SolidLine, Qt::FlatCap));
+-            painter.drawArc(QRectF(4, 4, 24, 24), (28 + i * 120) * 16, 103 * 16);
++            painter.setPen(QPen(colors[i], 2.5, Qt::SolidLine, Qt::FlatCap));
++            painter.drawArc(QRectF(2.5, 2.5, 15, 15), (28 + i * 120) * 16, 103 * 16);
+         }
+     }
+     auto* logo = new QLabel(header);
+     logo->setPixmap(mark);
+-    headerLayout->addWidget(logo);
+-    headerLayout->addWidget(name);
+-    headerLayout->addStretch();
+-    headerLayout->addWidget(project);
++    brandLayout->addWidget(logo);
++    brandLayout->addWidget(name);
++    brandLayout->addStretch();
++    headerLayout->addWidget(brand, 0, 0);
++    headerLayout->addWidget(project, 0, 2, Qt::AlignRight);
+     shellLayout->addWidget(header);
+ 
+     auto* pages = new QStackedWidget(shell);
+     auto* playback = new Playback(pages);
+-    auto* media = new MediaWorkspace(playback, [project](const QString& text) {
+-        project->setText(project->fontMetrics().elidedText(text, Qt::ElideMiddle, 240));
++    auto* closeProject = new QAction("Close project", menu);
++    closeProject->setEnabled(false);
++    auto* media = new MediaWorkspace(playback, [project, closeProject](const QString& text) {
++        project->setText(text.isEmpty() ? "No project" : project->fontMetrics().elidedText(text, Qt::ElideMiddle, 200));
+         project->setToolTip(text);
++        project->setProperty("emptyProject", text.isEmpty());
++        project->style()->unpolish(project);
++        project->style()->polish(project);
++        closeProject->setEnabled(!text.isEmpty());
+     }, pages);
+     auto* ingest = new IngestWidget([media] { return media->projectPath(); }, [media](const QString& path) {
+         if (media->projectPath() == path) media->refreshMedia();
+@@ -110,21 +134,26 @@
+                             static_cast<QWidget*>(exports)}) pages->addWidget(workspace);
+     shellLayout->addWidget(pages, 1);
+ 
+-    auto* nav = new QWidget(shell);
+-    nav->setObjectName("workspaceNav");
++    auto* nav = new QWidget(header);
++    nav->setObjectName("workspaceSwitch");
++    nav->setFixedHeight(36);
+     auto* navLayout = new QHBoxLayout(nav);
+-    navLayout->setContentsMargins(12, 7, 12, 7);
+-    navLayout->setSpacing(5);
+-    navLayout->addStretch();
++    navLayout->setContentsMargins(3, 3, 3, 3);
++    navLayout->setSpacing(0);
+     auto* group = new QButtonGroup(nav);
+     for (int i = 0; i < labels.size(); ++i) {
+         auto* button = new QToolButton(nav);
+         button->setObjectName("workspaceButton");
+         button->setCheckable(true);
+         button->setText(labels[i]);
+-        button->setIcon(workspaceIcon(i));
+-        button->setIconSize(QSize(22, 22));
+-        button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
++        QIcon icon;
++        icon.addPixmap(workspacePixmap(i, QColor(OpenRollTheme::tokens.value("@muted"))), QIcon::Normal, QIcon::Off);
++        icon.addPixmap(workspacePixmap(i, QColor(OpenRollTheme::tokens.value("@text"))), QIcon::Normal, QIcon::On);
++        button->setIcon(icon);
++        button->setIconSize(QSize(16, 16));
++        button->setFixedHeight(30);
++        button->setFocusPolicy(Qt::NoFocus);
++        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+         button->setToolTip(QString("%1 (Ctrl+%2)").arg(labels[i]).arg(i + 1));
+         button->setAccessibleName(labels[i] + " workspace");
+         group->addButton(button, i);
+@@ -132,14 +161,11 @@
+         auto* shortcut = new QShortcut(QKeySequence(QString("Ctrl+%1").arg(i + 1)), &window);
+         QObject::connect(shortcut, &QShortcut::activated, group, [=] { if (nav->isVisible()) group->button(i)->click(); });
+     }
+-    navLayout->addStretch();
+     QObject::connect(group, &QButtonGroup::idClicked, pages, [=](int i) {
+         if (i == 1 || i == 2) media->setMonitorMode(i == 2);
+         pages->setCurrentWidget(workspaces[i]);
+     });
+-    menu->addAction("New project…", media, [=] { group->button(1)->click(); media->chooseProject(true); });
+-    menu->addAction("Open project…", media, [=] { group->button(1)->click(); media->chooseProject(false); });
+-    shellLayout->addWidget(nav);
++    headerLayout->addWidget(nav, 0, 1, Qt::AlignCenter);
+     auto* welcome = new QWidget(pages);
+     auto* welcomeLayout = new QVBoxLayout(welcome);
+     welcomeLayout->setContentsMargins(24, 24, 24, 24);
+@@ -174,6 +200,27 @@
+         media->chooseProject(create);
+         if (!media->projectPath().isEmpty()) leaveWelcome(1);
+     };
++    const auto registerAction = [&](const QString& title, const QString& shortcut, auto callback) {
++        auto* action = menu->addAction(title);
++        action->setShortcut(QKeySequence(shortcut));
++        window.addAction(action);
++        QObject::connect(action, &QAction::triggered, &window, callback);
++    };
++    registerAction("New project…", "Ctrl+N", [=] { selectProject(true); });
++    registerAction("Open project…", "Ctrl+O", [=] { selectProject(false); });
++    menu->addMenu("Recent projects")->setEnabled(false);
++    menu->addSeparator();
++    registerAction("Open clip…", "Ctrl+Shift+O", [&window, media, leaveWelcome] {
++        const auto file = QFileDialog::getOpenFileName(&window, "Open clip", {},
++            "Media (*.braw *.BRAW *.mp4 *.mov *.mxf *.mkv *.wav *.flac *.mp3 *.m4a);;All files (*)");
++        if (!file.isEmpty()) {
++            leaveWelcome(2);
++            media->openClip(file);
++        }
++    });
++    menu->addSeparator();
++    menu->addAction(closeProject);
++    QObject::connect(closeProject, &QAction::triggered, media, &MediaWorkspace::closeProject);
+     QObject::connect(createProject, &QPushButton::clicked, welcome, [=] { selectProject(true); });
+     QObject::connect(openProject, &QPushButton::clicked, welcome, [=] { selectProject(false); });
+     QObject::connect(standalone, &QPushButton::clicked, welcome, [=] { leaveWelcome(0); });
+--- a/src/media.cpp
++++ b/src/media.cpp
+@@ -309,6 +309,27 @@
+     }
+ }
+ 
++void MediaWorkspace::closeProject()
++{
++    if (!project) return;
++    if (scanning) {
++        QMessageBox::information(this, "Close project", "Wait for the media scan to finish or cancel it.");
++        return;
++    }
++    project.reset();
++    projectChanged({});
++    add->setEnabled(false);
++    selectedPath.clear();
++    clips.clear();
++    {
++        const QSignalBlocker block(folders);
++        folders->clear();
++    }
++    filter->clear();
++    filterMedia();
++    status->setText("Create or open a project to add media.");
++}
++
+ void MediaWorkspace::setMonitorMode(bool enabled)
+ {
+     sourcePanel->setVisible(!enabled);
+--- a/src/media.hpp
++++ b/src/media.hpp
+@@ -20,6 +20,7 @@
+     QString projectPath() const { return project ? project->path() : QString{}; }
+     QString projectName() const { return project ? project->name() : QString{}; }
+     void chooseProject(bool create);
++    void closeProject();
+     void setMonitorMode(bool enabled);
+     void openClip(const QString& path);
+ 
+--- a/src/theme.hpp
++++ b/src/theme.hpp
+@@ -161,7 +161,6 @@
+ 
+ 
+ QWidget#appHeader { background: @surface; }
+-QWidget#workspaceNav { background: @surface; }
+ QLabel#appName { color: @text; font-size: 15px; font-weight: 600; }
+ QLabel#appProject { color: @muted; font-size: 11px; }
+ QGroupBox#ingestSection { border: 0; margin-top: 16px; padding: 8px; }
+@@ -170,16 +169,22 @@
+     background: transparent; border: 1px dashed @line; border-radius: @rContainer;
+     color: @text; padding: 12px;
+ }
+-QToolButton#workspaceButton, QToolButton#projectMenu, QToolButton#viewToggle {
++QWidget#workspaceSwitch { background: @raised; border-radius: 18px; }
++QToolButton#workspaceButton {
++    background: transparent; border: 0; border-radius: 15px;
++    color: @muted; padding: 0 14px; font-weight: 600;
++}
++QToolButton#workspaceButton:hover { color: @text; }
++QToolButton#workspaceButton:checked { background: @accentSoft; color: @text; }
++QToolButton#projectMenu, QToolButton#viewToggle {
+     background: @raised; border: 1px solid transparent; border-radius: @rControl;
+     padding: 4px 12px;
+ }
+-QToolButton#workspaceButton:hover, QToolButton#projectMenu:hover,
+-QToolButton#viewToggle:hover { background: @hover; }
+-QToolButton#workspaceButton:checked, QToolButton#viewToggle:checked { background: @accentSoft; }
++QToolButton#projectMenu:hover, QToolButton#viewToggle:hover { background: @hover; }
++QToolButton#viewToggle:checked { background: @accentSoft; }
+ QToolButton#projectMenu { padding-right: 24px; }
+-QToolButton#projectMenu:focus, QToolButton#viewToggle:focus,
+-QToolButton#workspaceButton:focus { border-color: @accent; }
++QToolButton#projectMenu[emptyProject="true"] { color: @muted; }
++QToolButton#projectMenu:focus, QToolButton#viewToggle:focus { border-color: @accent; }
+ QTreeWidget#mediaFolders, QTreeWidget#metadataList, QListWidget#clipStrip { background: transparent; }
+ QPushButton#transportButton { padding: 0; border-color: @line; }
+ QPushButton#transportButton:focus { border-color: @accent; }

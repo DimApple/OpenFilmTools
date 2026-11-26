@@ -1,0 +1,228 @@
+--- a/src/ingest_widget.cpp
++++ b/src/ingest_widget.cpp
+@@ -10,7 +10,9 @@
+ #include <QLocale>
+ #include <QMimeData>
+ #include <QMessageBox>
+-#include <QGroupBox>
++#include <QFrame>
++#include <QScrollArea>
++#include <QDragLeaveEvent>
+ #include <QElapsedTimer>
+ #include <QFileDialog>
+ #include <QFileInfo>
+@@ -38,16 +40,18 @@
+         setWordWrap(true);
+         setTextFormat(Qt::PlainText);
+         setObjectName("sourceDrop");
+-        setMinimumHeight(94);
+-        setText("Drop a file or camera folder here");
++        setFixedHeight(120);
++        setText("Drop a card, folder or file here\nor choose one below");
+     }
+     std::function<void(const QString&)> picked;
+ 
+ protected:
+-    void dragEnterEvent(QDragEnterEvent* event) override { acceptSource(event); }
++    void dragEnterEvent(QDragEnterEvent* event) override { highlight(acceptSource(event)); }
++    void dragLeaveEvent(QDragLeaveEvent* event) override { highlight(false); event->accept(); }
+     void dragMoveEvent(QDragMoveEvent* event) override { acceptSource(event); }
+     void dropEvent(QDropEvent* event) override
+     {
++        highlight(false);
+         if (!acceptSource(event)) return;
+         const auto path = event->mimeData()->urls().front().toLocalFile();
+         // Finish the native drop before opening a project dialog.
+@@ -55,6 +59,13 @@
+     }
+ 
+ private:
++    void highlight(bool active)
++    {
++        setProperty("dragActive", active);
++        style()->unpolish(this);
++        style()->polish(this);
++    }
++
+     static bool acceptSource(QDropEvent* event)
+     {
+         const auto urls = event->mimeData()->urls();
+@@ -74,12 +85,47 @@
+     : QWidget(parent), projectPath(std::move(currentProject))
+ {
+     auto* layout = new QVBoxLayout(this);
+-    layout->setContentsMargins(18, 14, 18, 14);
+-    layout->setSpacing(14);
+-    auto* sourceGroup = new QGroupBox("Source", this);
+-    sourceGroup->setObjectName("ingestSection");
+-    auto* sourceLayout = new QVBoxLayout(sourceGroup);
+-    layout->addWidget(sourceGroup);
++    layout->setContentsMargins(0, 0, 0, 0);
++    auto* scroll = new QScrollArea(this);
++    scroll->setFrameShape(QFrame::NoFrame);
++    scroll->setWidgetResizable(true);
++    layout->addWidget(scroll);
++    auto* canvas = new QWidget;
++    scroll->setWidget(canvas);
++    auto* centered = new QHBoxLayout(canvas);
++    centered->setContentsMargins(24, 16, 24, 16);
++    centered->addStretch();
++    auto* column = new QWidget(canvas);
++    column->setMaximumWidth(880);
++    centered->addWidget(column, 1);
++    centered->addStretch();
++    auto* sections = new QVBoxLayout(column);
++    sections->setContentsMargins(0, 0, 0, 0);
++    sections->setSpacing(16);
++    auto section = [column, sections](int index, const QString& name) {
++        auto* body = new QVBoxLayout;
++        body->setSpacing(8);
++        sections->addLayout(body);
++        auto* header = new QHBoxLayout;
++        header->setSpacing(8);
++        auto* badge = new QLabel(QString::number(index), column);
++        badge->setObjectName("ingestStep");
++        badge->setFixedSize(20, 20);
++        badge->setAlignment(Qt::AlignCenter);
++        header->addWidget(badge);
++        header->addWidget(sectionLabel(name, column));
++        header->addStretch();
++        body->addLayout(header);
++        auto* card = new QFrame(column);
++        card->setObjectName("card");
++        body->addWidget(card);
++        auto* contents = new QVBoxLayout(card);
++        contents->setContentsMargins(16, 16, 16, 16);
++        contents->setSpacing(8);
++        return contents;
++    };
++    auto* sourceLayout = section(1, "Source");
++    auto* sourceGroup = sourceLayout->parentWidget();
+     auto* source = new QLineEdit(this);
+     source->setPlaceholderText("Source folder or mounted camera card");
+     source->setAccessibleName("Source folder");
+@@ -95,10 +141,8 @@
+     sourceRow->addWidget(browse);
+     sourceLayout->addLayout(sourceRow);
+ 
+-    auto* copies = new QGroupBox("Backup destinations", this);
+-    copies->setObjectName("ingestSection");
+-    auto* copiesLayout = new QVBoxLayout(copies);
+-    layout->addWidget(copies, 1);
++    auto* copiesLayout = section(2, "Destinations");
++    auto* copies = copiesLayout->parentWidget();
+     auto* copyName = new QLineEdit(this);
+     copyName->setAccessibleName("Copy folder name");
+     copyName->setPlaceholderText("Defaults to the source folder name");
+@@ -116,9 +160,12 @@
+ 
+     auto* add = new QPushButton("Add destination…", this);
+     auto* remove = new QPushButton("Remove selected", this);
++    auto* emptyDestinations = new QLabel("Add a backup destination", this);
++    emptyDestinations->setObjectName("quiet");
++    destinationsRow->addWidget(emptyDestinations, 1);
+     destinationsRow->addWidget(add);
+     destinationsRow->addWidget(remove);
+-    destinationsRow->addStretch();
++
+     copiesLayout->addLayout(destinationsRow);
+     auto* destinations = new QTreeWidget(this);
+     destinations->setHeaderLabels({"Save in", "Final copy path"});
+@@ -126,7 +173,7 @@
+     destinations->setAlternatingRowColors(true);
+     destinations->header()->setSectionResizeMode(QHeaderView::Stretch);
+     destinations->setAccessibleName("Backup destinations and final copy paths");
+-    destinations->setMinimumHeight(90);
++    destinations->setObjectName("ingestDestinations");
+     copiesLayout->addWidget(destinations, 1);
+     copiesLayout->addWidget(naming);
+ 
+@@ -134,28 +181,26 @@
+     validation->setWordWrap(true);
+     validation->setTextFormat(Qt::PlainText);
+     validation->setObjectName("quiet");
+-    auto* transfer = new QGroupBox("Verified copy", this);
+-    transfer->setObjectName("ingestSection");
+-    auto* transferLayout = new QVBoxLayout(transfer);
+-    layout->addWidget(transfer);
+-    transferLayout->addWidget(validation);
++    auto* transferLayout = section(3, "Verify");
++    sections->addStretch();
+     auto* status = new QLabel(this);
+     status->setWordWrap(true);
+     status->setTextFormat(Qt::PlainText);
+     status->hide();
+     transferLayout->addWidget(status);
+     auto* jobBar = new QProgressBar(this);
+-    jobBar->setFormat("Overall %p%");
++    jobBar->setTextVisible(false);
+     jobBar->hide();
+     transferLayout->addWidget(jobBar);
+     auto* actions = new QHBoxLayout;
+     auto* start = new QPushButton("Start verified copy", this);
+     setAction(start, "primary");
++    start->setFixedHeight(40);
+     auto* cancel = new QPushButton("Cancel transfer", this);
+     auto* report = new QPushButton("Open report folder", this);
+     cancel->hide();
+     report->hide();
+-    actions->addStretch();
++    actions->addWidget(validation, 1);
+     actions->addWidget(report);
+     actions->addWidget(cancel);
+     actions->addWidget(start);
+@@ -174,7 +219,11 @@
+         const bool busy = watcher->isRunning();
+         const auto roots = paths();
+         copies->setEnabled(*indexed && !busy);
++        emptyDestinations->setVisible(roots.isEmpty());
+         destinations->setVisible(!roots.isEmpty());
++        destinations->setFixedHeight(destinations->header()->sizeHint().height() +
++                                     qMin(roots.size(), qsizetype(4)) * 48 + 4);
++        setAction(add, roots.isEmpty() ? "" : "ghost");
+         naming->setVisible(!roots.isEmpty());
+         remove->setVisible(!roots.isEmpty());
+         const auto name = copyName->text().trimmed();
+@@ -336,7 +385,7 @@
+         setActive(false);
+         reportDirectory = result.reportDirectory;
+         report->setVisible(!reportDirectory.isEmpty());
+-        setAction(status, result.verified ? "success" : "warning");
++        setAction(status, result.verified ? "success" : "danger");
+         status->setText(result.message);
+         jobBar->setRange(0, 100);
+         if (result.verified) {
+@@ -379,6 +428,7 @@
+                         jobBar->setValue(qMin(99, int(100.0 * progress.done / progress.total)));
+                     }
+                     QString text = progress.phase;
++                    if (progress.total > 0) text += QString(" · %1%").arg(jobBar->value());
+                     if (!progress.file.isEmpty()) text += "  ·  " + progress.file;
+                     if (progress.done > 0 && ms > 0) {
+                         const double speed = double(progress.done) / ms;
+--- a/src/theme.hpp
++++ b/src/theme.hpp
+@@ -167,8 +167,13 @@
+ QWidget#appHeader { background: @surface; }
+ QLabel#appName { color: @text; font-size: 15px; font-weight: 600; }
+ QLabel#appProject { color: @muted; font-size: 11px; }
+-QGroupBox#ingestSection { border: 0; margin-top: 16px; padding: 8px; }
+-QGroupBox#ingestSection::title { subcontrol-origin: margin; left: 8px; color: @text; }
++QLabel#ingestStep {
++    background: @raised; color: @muted; border-radius: 10px; font-size: 11px; font-weight: 600;
++}
++QTreeWidget#ingestDestinations::item {
++    background: @raised; min-height: 40px; border-radius: @rCard;
++}
++QTreeWidget#ingestDestinations::item:selected { background: @accentSoft; }
+ QLabel#sourceDrop {
+     background: transparent; border: 1px dashed @line; border-radius: @rContainer;
+     color: @text; padding: 12px;
+@@ -180,6 +185,7 @@
+ }
+ QToolButton#workspaceButton:hover { color: @text; }
+ QToolButton#workspaceButton:checked { background: @accentSoft; color: @text; }
++QLabel#sourceDrop[dragActive="true"] { border: 1px solid @accent; background: @accentSoft; }
+ QToolButton#projectMenu, QToolButton#viewToggle {
+     background: @raised; border: 1px solid transparent; border-radius: @rControl;
+     padding: 4px 12px;

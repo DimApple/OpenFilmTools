@@ -1,0 +1,283 @@
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -8,6 +8,13 @@
+ #include <QFileInfo>
+ #include <QFileDialog>
+ #include <QGridLayout>
++#include <QDateTime>
++#include <QDragEnterEvent>
++#include <QDropEvent>
++#include <QListWidget>
++#include <QMimeData>
++#include <QSettings>
++#include <QUrl>
+ #include <QHBoxLayout>
+ #include <QMainWindow>
+ #include <QMenu>
+@@ -22,6 +29,36 @@
+ #include <QWindow>
+ 
+ namespace {
++QString droppedProject(const QMimeData* mime)
++{
++    const auto urls = mime->urls();
++    if (urls.size() != 1 || !urls.front().isLocalFile()) return {};
++    const auto path = urls.front().toLocalFile();
++    return QFileInfo(path).suffix().compare("openroll", Qt::CaseInsensitive) == 0 ? path : QString{};
++}
++
++class OpenRollWindow final : public QMainWindow {
++public:
++    OpenRollWindow() { setAcceptDrops(true); }
++    std::function<void(const QString&)> openProject;
++protected:
++    void dragEnterEvent(QDragEnterEvent* event) override
++    {
++        if (!droppedProject(event->mimeData()).isEmpty() && event->possibleActions().testFlag(Qt::CopyAction)) {
++            event->setDropAction(Qt::CopyAction);
++            event->accept();
++        }
++    }
++    void dropEvent(QDropEvent* event) override
++    {
++        const auto path = droppedProject(event->mimeData());
++        if (path.isEmpty() || !event->possibleActions().testFlag(Qt::CopyAction)) return;
++        event->setDropAction(Qt::CopyAction);
++        event->accept();
++        QTimer::singleShot(0, this, [this, path] { openProject(path); });
++    }
++};
++
+ QPixmap workspacePixmap(int index, const QColor& color)
+ {
+     QPixmap bitmap(32, 32);
+@@ -59,7 +96,7 @@
+     QApplication::setApplicationName("OpenRoll");
+     applyTheme(app);
+ 
+-    QMainWindow window;
++    OpenRollWindow window;
+     window.setWindowTitle("OpenRoll");
+     auto* shell = new QWidget(&window);
+     auto* shellLayout = new QVBoxLayout(shell);
+@@ -116,13 +153,26 @@
+     auto* playback = new Playback(pages);
+     auto* closeProject = new QAction("Close project", menu);
+     closeProject->setEnabled(false);
+-    auto* media = new MediaWorkspace(playback, [project, closeProject](const QString& text) {
++    QSettings settings("OpenRoll", "OpenRoll");
++    MediaWorkspace* media = nullptr;
++    std::function<void()> refreshRecent;
++    media = new MediaWorkspace(playback, [&, project, closeProject](const QString& text) {
+         project->setText(text.isEmpty() ? "No project" : project->fontMetrics().elidedText(text, Qt::ElideMiddle, 200));
+         project->setToolTip(text);
+         project->setProperty("emptyProject", text.isEmpty());
+         project->style()->unpolish(project);
+         project->style()->polish(project);
+         closeProject->setEnabled(!text.isEmpty());
++        if (!text.isEmpty()) {
++            const auto path = QFileInfo(media->projectPath()).absoluteFilePath();
++            auto recent = settings.value("recentProjects").toList();
++            for (qsizetype i = recent.size(); i-- > 0;)
++                if (recent.at(i).toMap().value("path").toString() == path) recent.removeAt(i);
++            recent.prepend(QVariantMap{{"path", path}, {"openedAt", QDateTime::currentDateTime()}});
++            while (recent.size() > 8) recent.removeLast();
++            settings.setValue("recentProjects", recent);
++        }
++        if (refreshRecent) refreshRecent();
+     }, pages);
+     auto* ingest = new IngestWidget([media] { return media->projectPath(); }, [media](const QString& path) {
+         if (media->projectPath() == path) media->refreshMedia();
+@@ -170,22 +220,48 @@
+     auto* welcomeLayout = new QVBoxLayout(welcome);
+     welcomeLayout->setContentsMargins(24, 24, 24, 24);
+     welcomeLayout->setSpacing(16);
+-    welcomeLayout->addStretch();
+-    auto* heading = sectionLabel("Create or open a project", welcome);
+-    heading->setAlignment(Qt::AlignCenter);
+-    welcomeLayout->addWidget(heading);
++    welcomeLayout->addStretch(2);
++    auto* column = new QWidget(welcome);
++    column->setFixedWidth(480);
++    auto* content = new QVBoxLayout(column);
++    content->setContentsMargins(0, 0, 0, 0);
++    content->setSpacing(8);
++    auto* welcomeLogo = new QLabel(column);
++    welcomeLogo->setPixmap(mark.scaled(80, 80, Qt::KeepAspectRatio, Qt::SmoothTransformation));
++    content->addWidget(welcomeLogo, 0, Qt::AlignHCenter);
++    auto* heading = new QLabel("OpenRoll", column);
++    heading->setObjectName("welcomeName");
++    content->addWidget(heading, 0, Qt::AlignHCenter);
++    content->addSpacing(16);
+     auto* actions = new QHBoxLayout;
+-    actions->addStretch();
+-    auto* createProject = new QPushButton("Create project…", welcome);
+-    auto* openProject = new QPushButton("Open project…", welcome);
++    actions->setSpacing(8);
++    auto* createProject = new QPushButton("New project…", column);
++    auto* openProject = new QPushButton("Open project…", column);
++    createProject->setToolTip("New project (Ctrl+N)");
++    openProject->setToolTip("Open project (Ctrl+O)");
++    createProject->setFixedHeight(40);
++    openProject->setFixedHeight(40);
+     setAction(createProject, "primary");
+-    actions->addWidget(createProject);
+-    actions->addWidget(openProject);
+-    actions->addStretch();
+-    welcomeLayout->addLayout(actions);
+-    auto* standalone = new QPushButton("Continue without a project", welcome);
+-    welcomeLayout->addWidget(standalone, 0, Qt::AlignHCenter);
+-    welcomeLayout->addStretch();
++    actions->addWidget(createProject, 1);
++    actions->addWidget(openProject, 1);
++    content->addLayout(actions);
++    content->addSpacing(16);
++    content->addWidget(sectionLabel("Recent projects", column));
++    auto* recentList = new QListWidget(column);
++    recentList->setObjectName("recentList");
++    recentList->setSpacing(2);
++    content->addWidget(recentList);
++    auto* noRecent = new QLabel("No recent projects yet", column);
++    noRecent->setObjectName("recentEmpty");
++    noRecent->setAlignment(Qt::AlignCenter);
++    noRecent->setFixedHeight(56);
++    content->addWidget(noRecent);
++    auto* standalone = new QPushButton("Continue without a project", column);
++    setAction(standalone, "link");
++    content->addSpacing(16);
++    content->addWidget(standalone, 0, Qt::AlignHCenter);
++    welcomeLayout->addWidget(column, 0, Qt::AlignHCenter);
++    welcomeLayout->addStretch(3);
+     pages->addWidget(welcome);
+     pages->setCurrentWidget(welcome);
+     nav->hide();
+@@ -208,7 +284,88 @@
+     };
+     registerAction("New project…", "Ctrl+N", [=] { selectProject(true); });
+     registerAction("Open project…", "Ctrl+O", [=] { selectProject(false); });
+-    menu->addMenu("Recent projects")->setEnabled(false);
++    auto* recentMenu = menu->addMenu("Recent projects");
++    recentMenu->setToolTipsVisible(true);
++    window.openProject = [=](const QString& path) {
++        media->openProjectFile(path);
++        if (media->projectPath() == QFileInfo(path).absoluteFilePath()) leaveWelcome(1);
++    };
++    refreshRecent = [&, recentList, noRecent, recentMenu] {
++        recentMenu->clear();
++        recentList->clear();
++        const auto entries = settings.value("recentProjects").toList();
++        for (const auto& entry : entries) {
++            const auto record = entry.toMap();
++            const auto path = record.value("path").toString();
++            const QFileInfo file(path);
++            const bool exists = file.isFile();
++            auto* action = recentMenu->addAction(file.completeBaseName());
++            action->setToolTip(path);
++            action->setEnabled(exists);
++            QObject::connect(action, &QAction::triggered, &window, [&, path] { window.openProject(path); });
++            if (recentList->count() == 6) continue;
++            auto* item = new QListWidgetItem(recentList);
++            item->setSizeHint(QSize(0, 56));
++            item->setData(Qt::UserRole, path);
++            item->setToolTip(path);
++            auto* row = new QWidget;
++            row->setObjectName("recentRow");
++            row->setAttribute(Qt::WA_TransparentForMouseEvents);
++            auto* layout = new QGridLayout(row);
++            layout->setContentsMargins(12, 4, 12, 4);
++            layout->setVerticalSpacing(0);
++            auto* name = new QLabel(file.completeBaseName(), row);
++            name->setTextFormat(Qt::PlainText);
++            auto* folder = new QLabel(row);
++            folder->setObjectName("quiet");
++            folder->setTextFormat(Qt::PlainText);
++            folder->setText(folder->fontMetrics().elidedText(file.absolutePath(), Qt::ElideMiddle, 340));
++            const auto date = record.value("openedAt").toDateTime().date();
++            const auto today = QDate::currentDate();
++            auto* when = new QLabel(!exists ? "Not found" : date == today ? "Today"
++                : date == today.addDays(-1) ? "Yesterday" : date.toString("MMM d"), row);
++            when->setObjectName("quiet");
++            name->setEnabled(exists);
++            folder->setEnabled(exists);
++            layout->addWidget(name, 0, 0);
++            layout->addWidget(folder, 1, 0);
++            layout->addWidget(when, 0, 1, 2, 1, Qt::AlignRight);
++            layout->setColumnStretch(0, 1);
++            recentList->setItemWidget(item, row);
++        }
++        recentList->setFixedHeight(recentList->count() * 60);
++        recentList->setVisible(!entries.isEmpty());
++        noRecent->setVisible(entries.isEmpty());
++        recentMenu->addSeparator();
++        auto* clear = recentMenu->addAction("Clear recent");
++        QObject::connect(clear, &QAction::triggered, &window, [&] {
++            settings.remove("recentProjects");
++            refreshRecent();
++        });
++        recentMenu->setEnabled(!entries.isEmpty());
++    };
++    const auto activateRecent = [&window](QListWidgetItem* item) {
++        const auto path = item->data(Qt::UserRole).toString();
++        if (QFileInfo(path).isFile()) window.openProject(path);
++    };
++    QObject::connect(recentList, &QListWidget::itemClicked, &window, activateRecent);
++    QObject::connect(recentList, &QListWidget::itemActivated, &window, activateRecent);
++    recentList->setContextMenuPolicy(Qt::CustomContextMenu);
++    QObject::connect(recentList, &QListWidget::customContextMenuRequested, &window, [&, recentList](const QPoint& point) {
++        auto* item = recentList->itemAt(point);
++        if (!item) return;
++        const auto path = item->data(Qt::UserRole).toString();
++        if (QFileInfo(path).isFile()) return;
++        QMenu removal;
++        auto* remove = removal.addAction("Remove from list");
++        if (removal.exec(recentList->viewport()->mapToGlobal(point)) != remove) return;
++        auto entries = settings.value("recentProjects").toList();
++        for (qsizetype i = entries.size(); i-- > 0;)
++            if (entries.at(i).toMap().value("path").toString() == path) entries.removeAt(i);
++        settings.setValue("recentProjects", entries);
++        refreshRecent();
++    });
++    refreshRecent();
+     menu->addSeparator();
+     registerAction("Open clip…", "Ctrl+Shift+O", [&window, media, leaveWelcome] {
+         const auto file = QFileDialog::getOpenFileName(&window, "Open clip", {},
+--- a/src/media.cpp
++++ b/src/media.cpp
+@@ -293,7 +293,13 @@
+     if (!QFileInfo(folder).isDir()) folder = QDir::homePath();
+     const auto file = create ? chooseNewProject(this, folder)
+                              : QFileDialog::getOpenFileName(this, "Open OpenRoll project", folder, projectFilter);
+-    if (file.isEmpty()) return;
++    openProjectFile(file, create);
++}
++
++void MediaWorkspace::openProjectFile(const QString& file, bool create)
++{
++    if (scanning || file.isEmpty()) return;
++    QSettings preferences("OpenRoll", "OpenRoll");
+     try {
+         auto opened = std::make_unique<Project>(file, create);
+         project = std::move(opened);
+--- a/src/media.hpp
++++ b/src/media.hpp
+@@ -21,6 +21,7 @@
+     QString projectName() const { return project ? project->name() : QString{}; }
+     void chooseProject(bool create);
+     void closeProject();
++    void openProjectFile(const QString& file, bool create = false);
+     void setMonitorMode(bool enabled);
+     void openClip(const QString& path);
+ 
+--- a/src/theme.hpp
++++ b/src/theme.hpp
+@@ -160,6 +160,10 @@
+ QToolTip { background: @raised; color: @text; border: 1px solid @line; padding: 4px 8px; }
+ 
+ 
++QLabel#welcomeName { font-size: 22px; font-weight: 600; }
++QWidget#recentRow { background: @surface; border-radius: @rCard; }
++QListWidget#recentList::item:hover { background: @raised; border-radius: @rCard; }
++QLabel#recentEmpty { border: 1px dashed @line; border-radius: @rCard; color: @muted; }
+ QWidget#appHeader { background: @surface; }
+ QLabel#appName { color: @text; font-size: 15px; font-weight: 600; }
+ QLabel#appProject { color: @muted; font-size: 11px; }

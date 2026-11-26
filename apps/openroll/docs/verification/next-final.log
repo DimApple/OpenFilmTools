@@ -1,0 +1,23 @@
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.2.1/build'
+[1/6] Compiling C++ object braw-test.p/tests_braw.cpp.o
+[2/6] Compiling C++ object openroll.p/src_main.cpp.o
+[3/6] Compiling C++ object libopenroll-playback.a.p/src_playback.cpp.o
+[4/6] Linking static target libopenroll-playback.a
+[5/6] Linking target openroll
+[6/6] Linking target braw-test
+INFO: autodetecting backend as ninja
+INFO: calculating backend command to run: /workspace/scratch/85b6826418e9/audit/sys/usr/bin/ninja -C /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.2.1/build
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.2.1/build'
+ninja: no work to do.
+1/2 window lifecycle             OK              0.26s
+2/2 BRAW rendering and transport OK              1.45s
+
+Ok:                 2   
+Expected Fail:      0   
+Fail:               0   
+Unexpected Pass:    0   
+Skipped:            0   
+Timeout:            0   
+
+Full log written to /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.2.1/build/meson-logs/testlog.txt
+This plugin does not support propagateSizeHints()

@@ -1,0 +1,415 @@
+--- a/README.md
++++ b/README.md
+@@ -1,10 +1,16 @@
+-# OpenRoll 0.17.0 development preview
++# OpenRoll 0.17.1 development preview
+ 
+ This checkpoint covers the dependency audit, the native Qt foundation, Blackmagic's SDK verification, BRAW playback, and conventional playback via libVLC 3, verified media offloading, and a SQLite-backed media workspace. See [milestone status](docs/STATUS.md) and [third-party notices](docs/THIRD-PARTY.md).
+ 
+ ## Workspace navigation
+ 
+ Use the top workspace switcher or Ctrl+1 for Ingest, Ctrl+2 for Media, Ctrl+3 for Monitor, and Ctrl+4 for Transcode. In Media, choose a folder on the left and select a thumbnail to load the central viewer. Press I in Media to show or hide metadata for the selected clip. The controls above the clip strip switch to a list or filter by filename, codec, or camera. Monitor expands the same viewer without reopening the clip.
++
++Drop footage files or folders into Ingest or Media to link them to the open
++project. OpenRoll indexes the originals in place. A single source dropped into
++Ingest also becomes the source for a verified copy. If you drop several sources
++into Ingest, OpenRoll switches to Media to link them as a batch. To make a
++verified backup, select one source and add backup destinations in Ingest.
+ 
+ The playback counters show elapsed time and duration as HH:MM:SS:FF. Audio-only clips show a dash for frames. The metadata inspector continues to show source timecode when available.
+ 
+--- a/docs/STATUS.md
++++ b/docs/STATUS.md
+@@ -79,3 +79,12 @@
+ ## 0.10.0 transcode and video opening
+ 
+ Conventional media and BRAW share a multi-preset export queue. FFprobe verified all 13 presets using H.264/AAC input. Independent FFmpeg decoding also passed on short BRAW outputs in ProRes Proxy, DNxHR LB, H.264 MKV/MP4, and WAV. The VLC test checks that conventional video renders an initial frame, pauses, and resumes on explicit Play. Audio-only input retains its previous behavior. The Debian tests use short fixtures. Desktop validation on CachyOS remains pending.
++
++## 0.17.1 Project media drops
++
++Both Ingest and Media accept local footage drops and save the discovered
++clips in the currently open project. Existing paths are referenced in
++place. A single Ingest drop also sets up a verified copy. Multiple sources
++dropped into Ingest are indexed as a batch in Media. Automated Qt drop events
++verified the Media clip list, a project reopen and preservation of the original
++files. Desktop drag and drop on CachyOS remains to be checked.
+--- a/meson.build
++++ b/meson.build
+@@ -1,4 +1,4 @@
+-project('openroll', 'cpp', version: '0.17.0', default_options: ['cpp_std=c++17', 'warning_level=2'])
++project('openroll', 'cpp', version: '0.17.1', default_options: ['cpp_std=c++17', 'warning_level=2'])
+ 
+ qt = [
+   dependency('Qt6Widgets', method: 'pkg-config'),
+@@ -19,6 +19,8 @@
+ proxy_engine = static_library('openroll-proxy', 'src/proxy.cpp', dependencies: qt)
+ app = executable('openroll', ['src/main.cpp', 'src/ingest_widget.cpp', 'src/media.cpp', 'src/new_project.cpp', 'src/proxy_widget.cpp'], link_with: [playback, project_store, proxy_engine, raw, ingest_engine], dependencies: qt, cpp_args: ['-fPIC'], install: true)
+ test('window and workspace navigation', app, args: ['--smoke-test'], env: ['QT_QPA_PLATFORM=offscreen'])
++test('Media and Ingest drops persist in the active project', app, args: ['--media-drop-test'],
++  env: ['QT_QPA_PLATFORM=offscreen'], timeout: 15)
+ braw_test = executable('braw-test', 'tests/braw.cpp', include_directories: include_directories('src'),
+   link_with: [playback, raw], dependencies: qt, cpp_args: ['-fPIC'])
+ fixture = get_option('braw_test_clip')
+--- a/scripts/run-preview.sh
++++ b/scripts/run-preview.sh
+@@ -2,7 +2,7 @@
+ set -euo pipefail
+ 
+ source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+-work="${XDG_CACHE_HOME:-$HOME/.cache}/openroll/preview-0.17.0"
++work="${XDG_CACHE_HOME:-$HOME/.cache}/openroll/preview-0.17.1"
+ mkdir -p -- "$work"
+ sdk="$work/vendor/usr/lib64/blackmagic/BlackmagicRAWSDK"
+ profile="$work/vendor/BlackmagicRAW/BlackmagicRAWSpeedTest/profile.braw"
+--- a/src/ingest_widget.cpp
++++ b/src/ingest_widget.cpp
+@@ -296,8 +296,12 @@
+         start->setEnabled(!busy && *indexed && !planned.isEmpty());
+         remove->setEnabled(!busy && destinations->currentItem());
+     };
+-    drop->picked = [=](const QString& picked) {
+-        if (picked.isEmpty() || watcher->isRunning() || indexer->isRunning()) return;
++    indexSource = [=](const QString& picked) {
++        if (picked.isEmpty()) return;
++        if (watcher->isRunning() || indexer->isRunning()) {
++            QMessageBox::information(this, "Add media", "Wait for the current ingest operation to finish, then drop the media again.");
++            return;
++        }
+         const QFileInfo input(picked);
+         if ((input.isDir() || input.isFile()) && projectPath().isEmpty()) {
+             QMessageBox prompt(this);
+@@ -355,6 +359,7 @@
+             }
+         }));
+     };
++    drop->picked = indexSource;
+     connect(indexer, &QFutureWatcher<QStringList>::finished, this, [=] {
+         browse->setEnabled(true);
+         browseFile->setEnabled(true);
+--- a/src/ingest_widget.hpp
++++ b/src/ingest_widget.hpp
+@@ -8,6 +8,7 @@
+ public:
+     IngestWidget(std::function<QString()> projectPath, std::function<void(const QString&)> mediaLinked, std::function<void(bool)> chooseProject, QWidget* parent = nullptr);
+     ~IngestWidget() override;
++    std::function<void(const QString&)> indexSource;
+ 
+ private:
+     std::function<QString()> projectPath;
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -5,6 +5,9 @@
+ #include "theme.hpp"
+ 
+ #include <QButtonGroup>
++#include <QDir>
++#include <QElapsedTimer>
++#include <QFile>
+ #include <QFileInfo>
+ #include <QFileDialog>
+ #include <QGridLayout>
+@@ -18,12 +21,14 @@
+ #include <QHBoxLayout>
+ #include <QMainWindow>
+ #include <QMenu>
++#include <QMessageBox>
+ #include <QPainter>
+ #include <QPixmap>
+ #include <QPushButton>
+ #include <QShortcut>
+ #include <QStackedWidget>
+ #include <QTimer>
++#include <QTemporaryDir>
+ #include <QToolButton>
+ #include <QVBoxLayout>
+ #include <QWindow>
+@@ -34,12 +39,25 @@
+     const auto urls = mime->urls();
+     if (urls.size() != 1 || !urls.front().isLocalFile()) return {};
+     const auto path = urls.front().toLocalFile();
+-    return QFileInfo(path).suffix().compare("openroll", Qt::CaseInsensitive) == 0 ? path : QString{};
++    const QFileInfo info(path);
++    return !info.isDir() && info.suffix().compare("openroll", Qt::CaseInsensitive) == 0 ? path : QString{};
+ }
+ 
+-bool acceptProjectDrop(QDropEvent* event)
++QStringList droppedMedia(const QMimeData* mime)
+ {
+-    if (droppedProject(event->mimeData()).isEmpty()) return false;
++    QStringList paths;
++    for (const auto& url : mime->urls()) {
++        if (!url.isLocalFile()) return {};
++        const auto path = url.toLocalFile();
++        const QFileInfo info(path);
++        if (info.isFile() && info.suffix().compare("openroll", Qt::CaseInsensitive) == 0) return {};
++        if (!paths.contains(path)) paths << path;
++    }
++    return paths;
++}
++
++bool acceptLocalDrop(QDropEvent* event)
++{
+     const auto actions = event->possibleActions();
+     if (actions.testFlag(Qt::CopyAction)) event->setDropAction(Qt::CopyAction);
+     else if (actions.testFlag(Qt::LinkAction)) event->setDropAction(Qt::LinkAction);
+@@ -50,16 +68,48 @@
+ 
+ class OpenRollWindow final : public QMainWindow {
+ public:
+-    OpenRollWindow() { setAcceptDrops(true); }
++    OpenRollWindow()
++    {
++        setAcceptDrops(true);
++        qApp->installEventFilter(this);
++    }
+     std::function<void(const QString&)> openProject;
++    std::function<bool()> acceptsMedia;
++    std::function<void(const QStringList&)> addMedia;
+ protected:
+-    void dragEnterEvent(QDragEnterEvent* event) override { acceptProjectDrop(event); }
+-    void dragMoveEvent(QDragMoveEvent* event) override { acceptProjectDrop(event); }
++    bool eventFilter(QObject* target, QEvent* event) override
++    {
++        const auto type = event->type();
++        if (type != QEvent::DragEnter && type != QEvent::DragMove && type != QEvent::Drop)
++            return false;
++        auto* widget = qobject_cast<QWidget*>(target);
++        if (!widget || widget == this || widget->window() != this) return false;
++        auto* drop = static_cast<QDropEvent*>(event);
++        if (widget->objectName() == "sourceDrop" && droppedMedia(drop->mimeData()).size() == 1)
++            return false; // Keep native highlighting and single-source indexing.
++        if (!acceptDrop(drop)) return false;
++        if (type == QEvent::Drop) dropEvent(drop);
++        return true;
++    }
++    void dragEnterEvent(QDragEnterEvent* event) override { acceptDrop(event); }
++    void dragMoveEvent(QDragMoveEvent* event) override { acceptDrop(event); }
+     void dropEvent(QDropEvent* event) override
+     {
+-        const auto path = droppedProject(event->mimeData());
+-        if (!acceptProjectDrop(event)) return;
+-        QTimer::singleShot(0, this, [this, path] { openProject(path); });
++        if (!acceptDrop(event)) return;
++        const auto project = droppedProject(event->mimeData());
++        if (!project.isEmpty()) {
++            QTimer::singleShot(0, this, [this, project] { openProject(project); });
++        } else {
++            const auto paths = droppedMedia(event->mimeData());
++            QTimer::singleShot(0, this, [this, paths] { addMedia(paths); });
++        }
++    }
++private:
++    bool acceptDrop(QDropEvent* event)
++    {
++        const auto* mime = event->mimeData();
++        if (droppedProject(mime).isEmpty() && (!acceptsMedia() || droppedMedia(mime).isEmpty())) return false;
++        return acceptLocalDrop(event);
+     }
+ };
+ 
+@@ -97,6 +147,12 @@
+ int main(int argc, char** argv)
+ {
+     QApplication app(argc, argv);
++    std::unique_ptr<QTemporaryDir> testDirectory;
++    if (app.arguments().contains("--media-drop-test")) {
++        testDirectory = std::make_unique<QTemporaryDir>();
++        if (!testDirectory->isValid()) return 1;
++        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, testDirectory->path());
++    }
+     QApplication::setApplicationName("OpenRoll");
+     applyTheme(app);
+ 
+@@ -280,6 +336,28 @@
+         media->chooseProject(create);
+         if (!media->projectPath().isEmpty()) leaveWelcome(1);
+     };
++    window.acceptsMedia = [=] {
++        return pages->currentWidget() == ingest || group->checkedId() == 1;
++    };
++    window.addMedia = [=, &window](const QStringList& paths) {
++        if (pages->currentWidget() == ingest && paths.size() == 1) {
++            ingest->indexSource(paths.front());
++            return;
++        }
++        if (media->projectPath().isEmpty()) {
++            QMessageBox prompt(QMessageBox::Question, "Add media to a project",
++                               "Create or open a project to add the dropped footage.",
++                               QMessageBox::Cancel, &window);
++            auto* create = prompt.addButton("New project…", QMessageBox::AcceptRole);
++            auto* open = prompt.addButton("Open project…", QMessageBox::ActionRole);
++            prompt.exec();
++            if (prompt.clickedButton() == create || prompt.clickedButton() == open)
++                selectProject(prompt.clickedButton() == create);
++            if (media->projectPath().isEmpty()) return;
++        }
++        if (pages->currentWidget() == ingest) leaveWelcome(1);
++        media->linkMedia(paths);
++    };
+     const auto registerAction = [&](const QString& title, const QString& shortcut, auto callback) {
+         auto* action = menu->addAction(title);
+         action->setShortcut(QKeySequence(shortcut));
+@@ -406,6 +484,68 @@
+             okay = okay && group->button(2)->isChecked();
+             if (!okay || !window.close()) app.exit(1);
+         });
++    } else if (arguments.contains("--media-drop-test")) {
++        const auto& fixture = *testDirectory;
++        const auto path = fixture.filePath("Active project.openroll");
++        const auto unrelated = fixture.filePath("Unrelated project.openroll");
++        const auto folder = fixture.filePath("Camera card");
++        if (!QDir().mkdir(folder)) return 1;
++        const QStringList originals{folder + "/camera.mov", fixture.filePath("sound.wav"),
++                                    fixture.filePath("second.mp4")};
++        for (const auto& original : originals) {
++            QFile input(original);
++            if (!input.open(QIODevice::WriteOnly) || input.write("fixture") != 7) return 1;
++        }
++        Project other(unrelated, true);
++        media->openProjectFile(path, true);
++        auto sendDrop = [&](QWidget* target, const QList<QUrl>& urls) {
++            QMimeData mime;
++            mime.setUrls(urls);
++            QDragEnterEvent enter(QPoint(5, 5), Qt::LinkAction, &mime, Qt::LeftButton, Qt::NoModifier);
++            QApplication::sendEvent(target, &enter);
++            QDropEvent drop(QPointF(5, 5), Qt::LinkAction, &mime, Qt::LeftButton, Qt::NoModifier);
++            QApplication::sendEvent(target, &drop);
++            return enter.isAccepted() && drop.isAccepted();
++        };
++        QElapsedTimer deadline;
++        deadline.start();
++        QTimer poll;
++        int phase = 0;
++        leaveWelcome(0);
++        if (!sendDrop(ingest, {QUrl::fromLocalFile(folder)})) return 1;
++        QObject::connect(&poll, &QTimer::timeout, &window, [&] {
++            if (deadline.elapsed() > 10000) {
++                qCritical("Timed out waiting for project media to be linked (phase %d).", phase);
++                app.exit(1);
++                return;
++            }
++            Project reopened(path, false);
++            const auto linked = reopened.clipPaths();
++            if (phase == 0 && linked.contains(originals[0])) {
++                group->button(1)->click();
++                auto* target = media->findChild<QListWidget*>("clipStrip");
++                if (!target || !sendDrop(target->viewport(), {QUrl::fromLocalFile(originals[1]),
++                                                               QUrl::fromLocalFile(originals[2])})) {
++                    app.exit(1);
++                    return;
++                }
++                ++phase;
++            } else if (phase == 1 && linked.size() == 3) {
++                auto* list = media->findChild<QListWidget*>("clipStrip");
++                if (!list || list->count() != 3) return; // Wait for the scan completion UI.
++                media->closeProject();
++                media->openProjectFile(path);
++                bool okay = list->count() == 3 && other.clipPaths().isEmpty();
++                for (const auto& original : originals) {
++                    QFile input(original);
++                    okay = okay && linked.contains(original) && input.open(QIODevice::ReadOnly)
++                                  && input.readAll() == "fixture";
++                }
++                app.exit(okay ? 0 : 1);
++            }
++        });
++        poll.start(30);
++        return app.exec();
+     } else if (arguments.size() == 2) {
+         leaveWelcome(2);
+         media->openClip(QFileInfo(arguments.at(1)).absoluteFilePath());
+--- a/src/media.cpp
++++ b/src/media.cpp
+@@ -306,38 +306,58 @@
+             return;
+         }
+         const auto folder = QFileDialog::getExistingDirectory(this, "Scan media folder", initialFolder);
+-        if (folder.isEmpty()) return;
+-        const auto canonical = QFileInfo(folder).canonicalFilePath();
+-        if (canonical.isEmpty()) {
+-            status->setText("The selected folder is unavailable.");
+-            return;
+-        }
++        if (!folder.isEmpty()) linkMedia({folder});
++    });
++    scanSources = [=](const QStringList& sources) {
+         const auto path = projectPath();
+         cancelled.store(false);
+-        status->setText("Scanning " + canonical + "…");
++        status->setText("Indexing media…");
+         add->setEnabled(false);
+         scanning = true;
+         add->hide();
+         cancel->setEnabled(true);
+         cancel->show();
+-        watcher->setFuture(QtConcurrent::run(&worker, [this, path, canonical] {
+-            try {
+-                const auto clips = scanMedia(canonical, cancelled);
+-                if (cancelled.load()) return QString("Scan cancelled.");
+-                Project destination(path, false);
+-                destination.saveScan(canonical, clips);
+-                return QString("Saved %1 media records. Select a clip to open it.").arg(clips.size());
+-            } catch (const std::exception& error) {
+-                return QString("Scan failed. ") + QString::fromUtf8(error.what());
++        watcher->setFuture(QtConcurrent::run(&worker, [this, path, sources] {
++            QStringList errors;
++            qsizetype saved = 0;
++            for (const auto& source : sources) {
++                if (cancelled.load()) break;
++                try {
++                    const QFileInfo input(QFileInfo(source).canonicalFilePath());
++                    if (!input.exists()) throw std::runtime_error("Source is unavailable.");
++                    const auto records = scanMedia(input.filePath(), cancelled);
++                    if (cancelled.load()) break;
++                    if (records.isEmpty()) throw std::runtime_error("No supported media found.");
++                    Project destination(path, false);
++                    destination.saveScan(input.isDir() ? input.filePath() : input.absolutePath(), records);
++                    saved += records.size();
++                } catch (const std::exception& error) {
++                    errors << QFileInfo(source).fileName() + ": " + QString::fromUtf8(error.what());
++                }
+             }
++            QStringList result;
++            if (saved) result << QString("Linked %1 %2.").arg(saved).arg(saved == 1 ? "clip" : "clips");
++            if (cancelled.load()) result << "Scan cancelled.";
++            return (result + errors).join('\n');
+         }));
+-    });
++    };
+ }
+ 
+ MediaWorkspace::~MediaWorkspace()
+ {
+     cancelled.store(true);
+     worker.waitForDone();
++}
++
++void MediaWorkspace::linkMedia(const QStringList& sources)
++{
++    if (sources.isEmpty() || !project) return;
++    if (scanning) {
++        QMessageBox::information(this, "Add media", "Wait for the current scan to finish, or cancel it and drop the media again.");
++        return;
++    }
++    filter->clear();
++    scanSources(sources);
+ }
+ 
+ void MediaWorkspace::chooseProject(bool create)
+--- a/src/media.hpp
++++ b/src/media.hpp
+@@ -26,12 +26,14 @@
+     void openClip(const QString& path);
+ 
+     void refreshMedia();
++    void linkMedia(const QStringList& sources);
+ 
+ private:
+     void filterMedia();
+     void showMetadata(const Clip* clip);
+     std::unique_ptr<Project> project;
+     std::function<void(const QString&)> projectChanged;
++    std::function<void(const QStringList&)> scanSources;
+     QThreadPool worker;
+     std::atomic_bool cancelled{false};
+     bool scanning = false;

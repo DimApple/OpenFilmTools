@@ -1,0 +1,285 @@
+# Changelog
+
+## OpenGate Levi Edition — Milestone 1 preview
+
+- Added stage-based desktop navigation with Write, Plan, Storyboard, and Deliver.
+- Added persistent navigator and inspector widths, Reset Layout, and Focus Mode.
+- Serialized local saves and added a retryable Save Failed status.
+
+## v0.9.0 — 2026-11-03
+
+- **A sidebar inside projects:** sections and tabs now live in a sidebar on the left, like the Home page, with Reference, Exports and Settings at the bottom.
+  - **Every tab in view:** open any section to see its tabs, without hovering.
+  - **More room when you need it:** collapse it to icons with ⇤; hover an icon to jump to a tab. It starts as icons on smaller windows and remembers your choice.
+- **Classic menus:** File, Edit, View and Help now sit next to the project title. File holds saving, importing and exports; View has Light, Dark and System, and hides the sidebar or side panel. The ↶ ↷ buttons, Share and the save status stay in the bar.
+- **The logo goes Home:** click it to save and go to the Home page. It replaces "All projects…". If saving fails, the project stays open.
+- **Phones and iPad portrait:** the ☰ menu starts with ← Home, then the sections, Reference, Exports, File, Settings and Help. ⋯ no longer repeats Exports, Settings and Help.
+
+## v0.8.0 — 2026-11-03
+
+- **A new Home page:** a sidebar with Open Gate, Project Folders and Resources. On phones it becomes a compact bar at the top.
+  - **Open Gate:** the ways to start a project are now cards, with Recent projects and the credits below.
+  - **Drop a project file** anywhere in that section to open it.
+  - **Project Folders:** what the free tool does, and a link to its new page.
+  - **Resources:** coming soon, with what it will be and why it isn't open yet.
+- **Project Folders has its own page:** build a folder layout and add it to your right-click menu on Mac or Windows, with nothing to download: https://opengateapp.github.io/projectfolders/
+- **Export everything:** now links to Project Folders.
+
+## v0.7.0 — 2026-11-03
+
+- **Export everything:** one button on Shoot → Exports saves the whole project into one ZIP named after it, sorted into folders.
+  - **Folder layouts:** General Video, Resolve Cloud Team or Classic, with their empty folders ready for the shoot. Open Gate remembers your choice on this device.
+  - **What's inside:** scripts and drafts, documents, characters, storyboards and frame images, shot lists, breakdown, schedule, call sheets, contacts, locations and photos, budget, paperwork and signed files, mood board images, end credits, press kit, festivals and the social calendar, plus a separate copy of the project file and a `READ ME.txt`.
+  - **Choose what's included:** untick anything; items with nothing in them are greyed out with the reason. Large deliverable files start unticked if they'd push the ZIP past 500 MB.
+  - **While it builds:** progress and Cancel. If one part fails, the rest still build, and it tells you what was skipped.
+  - **Privacy:** the project file has no sharing access. If your access to a shared project is limited, you only get what you can see, with no fees and no project file.
+- **Docs:** the exported web page now escapes its title, so characters like `<` and `&` show correctly.
+
+## v0.6.2 — 2026-10-24
+
+- **Help & FAQ:** the FAQ page keeps one width. It no longer widens when you open an answer.
+
+## v0.6.1 — 2026-10-24
+
+- **Release tabs on desktop:** wider screens now get desktop layouts instead of stretched phone ones.
+  - **Press Kit:** the film's text, its pictures and the details side by side.
+  - **Distribution:** summary cards, deliverables as a table, and the sales & distribution list beside it.
+  - **Festivals:** sort, filter and CSV import in the toolbar.
+  - **Social & BTS:** the post beside its details in the editor.
+- Phones and iPads in portrait keep the cards.
+
+## v0.6.0 — 2026-10-24
+
+A new Release section, money and units in every number box, help built in, and a tour of the sample.
+
+- **Release**, a new section after Shoot:
+  - **Festivals** moved here and are shared with the budget: anyone with Release sees the list, deadlines and status; fees, waivers, paid and travel show only to people with the budget. Accepted festivals get laurels.
+  - **Press Kit (EPK):** logline, synopsis, director's statement, stills, poster, cast and key crew with bios and headshots, laurel images (PNG/SVG kept as sent, light and dark), tech specs filled from the project. Export a PDF or a one-page website to host anywhere.
+  - **Social & BTS:** a content calendar from your milestones (desktop: list and editor side by side), photos and clips, and a check that everyone shown has signed a release. **Share** with your phone's share sheet, **Post to X / Threads / Bluesky** with the caption filled in, copy and download for the rest, then mark it posted. Export the calendar for Buffer or another scheduling tool; type in views and likes.
+  - **Distribution:** a deliverables checklist (DCP, masters, mixes, captions, cue sheet, E&O, chain of title…), the sales agents, distributors and platforms you're talking to, and a warning when a licence doesn't cover a planned release.
+  - Call sheets can list **BTS & stills** to get that day.
+  - A **Marketing / festivals** sharing preset: Release without the budget.
+- **Units & currency:**
+  - every money box shows the currency, locked inside (**$ [387] /day**, **[20] €**), and other boxes their unit (%, ×, h, min, days, mm, ft or m…);
+  - typing "1,200.50" or a pasted "$1,200" both work;
+  - **Settings → Units & currency** (shared): any currency, short or clear symbol (CA$), number format, feet or metres, or your region's defaults. Amounts are never converted;
+  - location fees are amounts per day or flat;
+  - the Shot List lens takes any focal length, and duration is m:ss.
+- **Plan ↔ Budget:**
+  - budget lines say where their rate comes from (the deal memo, the location);
+  - Contacts, Paperwork and Locations show rates with a link to their budget account;
+  - a checklist on top of Budget shows what's missing upstream;
+  - Plan screens show the budget so far (only for people who can see the budget).
+- **Help (?):**
+  - an **FAQ** on why Open Gate works the way it does, what happens to your data, and what it doesn't do (also on the GitHub page);
+  - **Send feedback** and **Report a bug** open a GitHub form filled in with your app version, never your project;
+  - **What's new**.
+- **Tour of the sample production:** offered when the sample opens, it walks every section and stops at each problem left in on purpose.
+- **One tab at a time:** a second tab with the same project opens it read only, with "Use it here", so tabs can't overwrite each other.
+- **Storyboards:** Clear drawing also clears ghost poses, and Ghost pose can't add the same pose twice.
+- **Sharing:** the relay was updated for the new Release section; Release edits sync for everyone on this version.
+
+## v0.5.0 — 2026-10-23
+
+Budget help for first-timers, writing to a budget, a desktop Festivals table, and onion-skin poses in storyboards.
+
+- **Budget, explained:**
+  - lines tied to the schedule no longer sit at $0 without a word: a notice says why, with **Go to Stripboard** and **Set days by hand**;
+  - **Update from breakdown** says what it added and where (click to jump), or what's already there and why, and it's in every view;
+  - columns read **How long × How many × Cost of one = Total**, with a "?" on each and on budget words (above/below the line, fringe, contingency, kit fee, rental week).
+- **Set up my budget:** a guided setup, one question at a time (your money, shoot days, SAG-AFTRA agreement, cast and crew rates, gear, starter rates, contingency). It's offered on an empty budget and in Budget actions.
+- **Your cap on every Budget screen:** "$212 over your $11,000 cap", a warning when the total outgrows your SAG-AFTRA agreement (e.g. Micro-Budget past $20,000), and **ways to cut** ranked by money saved, each one you can **try as a version**.
+- **See an example:** a $10,000, 3-day short with one SAG-AFTRA Ultra Low actor, every line explained (rates checked October 2026).
+- **Start from a budget** (Home): tell it your money and what you have (gear, free locations, helpers, a union actor) and it suggests how many shoot days, locations, speaking roles and pages that buys. **Write → Limits** then tracks them as you write, flags things that cost money (crowds, cars, rain, kids, animals, stunts, VFX), notes the scene that goes past a limit, and offers story ideas from what you have. Existing scripts: Script tools → Writing to a budget….
+- **Reference → Writing to a budget:** what costs money on the page, *El Mariachi* and the Blumhouse model, with sources.
+- **Festivals on desktop:** a sortable table; click a row to open its deadlines and details. Phones keep the cards.
+- **Storyboards:**
+  - **ghost poses:** onion-skin earlier poses inside the same frame to show movement (add, edit, merge or delete them; undo brings them back);
+  - on desktop, Image, Clear drawing, Onion skin and Frame guides sit on the toolbar until the frame gets narrow.
+
+## v0.4.1 — 2026-10-23
+
+- **One sample:** Home now has a single **"Try the sample production"** button, which opens "The Last Reel" filled in across every section. The script-only sample is gone.
+
+## v0.4.0 — 2026-10-23
+
+Paperwork and unions, funding and festivals, a filled-in sample production, and a storyboard toolbar made for artists.
+
+- **Paperwork** (Plan → Paperwork), private like the budget:
+  - deal memos whose rates feed the budget;
+  - releases you can **sign on a phone or iPad**;
+  - start forms (recording only that they were received, never SSNs or bank details);
+  - a **clearances log** with **Scan script** (phone numbers, addresses, websites, brands, names, tagged props, and now every location);
+  - **time cards** with overtime and meal penalties, and payroll CSVs.
+- **Unions:** union, status and local for every cast, crew and contact row; the production's agreement (SAG-AFTRA tiers checked October 2026); Taft-Hartley warnings; union fringes; and a call-sheet warning when someone hasn't signed.
+- **Reference:**
+  - **Guilds & Unions:** researched pages for every major union and honorary society, with sources;
+  - **Budget & Funding:** how budgets work, fringes and payroll, crowdfunding (Kickstarter, Indiegogo, Seed&Spark and more), perks and fulfilment, grants and fiscal sponsorship, investors, and tax incentives for the US, UK, Canada, Australia and the EU, plus marketing, festivals, distribution and a money glossary;
+  - **Legal & Insurance:** production insurance, E&O, chain of title, releases, music licensing, drones and minors.
+  - Every page states when it was checked.
+- **Budget → Funding: "How much do I need to raise?"**
+  - From your breakdown to a goal: shoot days estimated from page count before you schedule (so the budget isn't $0);
+  - a quick estimate with starter rates (it never overwrites your numbers);
+  - a checklist of what people forget;
+  - your funding sources;
+  - what's left to raise before and after the shoot;
+  - a **crowdfunding goal that pays for its own fees, perks and postage**.
+- **Budget → Festivals:**
+  - your festival list with every deadline, fee, festival date, tier, premiere rule and status;
+  - **paste a festival's dates and fees** from FilmFreeway or its website (Open Gate reads them on your device; it never scrapes);
+  - fees and travel go into the budget, and deadlines show on the Calendar.
+- **Marketing:**
+  - a Festivals & Marketing block for budgets: stills, EPK, key art, trailer, web, ads, press kit, festival fees, DCP, travel and publicist;
+  - a **marketing & festival checklist** in Tasks, timed from your shoot and picture lock.
+- **Sample production:**
+  - Home now offers **Sample script** or **Sample production**;
+  - the production is an original 11-page "The Last Reel" filled in across every section, with **two stunts and their stunt performers**, code-drawn storyboards, a budget at real Ultra Low rates, funding and festivals;
+  - a few deliberate problems (Taft-Hartley, an unsigned release, a meal penalty, an uncleared song) show what the warnings are for.
+- **Storyboards:**
+  - **framing formats** (vertical 9:16 to scope 2.39 and IMAX) and colour-coded frame guides;
+  - a **grid** on the toolbar (rule of thirds or N × M, centre mark, safe areas);
+  - a simpler toolbar with one colour palette and size previews;
+  - **"+ Frame" inside the editor** with onion skin for drawing motion;
+  - PDFs that keep the frame's shape.
+- **Layout:**
+  - sections follow the production pipeline (Shot Lists in Breakdown; Contacts, Locations, Paperwork, Calendar and Tasks in Plan);
+  - Reports are now the ⤓ Exports button;
+  - the Reference hover menu shows categories and jumps to the page in the sidebar.
+- **Contacts:**
+  - crew roles are a department dropdown;
+  - locations show their clearance status and link to their release;
+  - honorary societies add their letters after names in the end credits.
+- **Fixes:** menus, dialogs and labels wrap instead of running off; many phone and iPad layout fixes.
+
+## v0.3.0 — 2026-10-19
+
+End credits, and a home for music and footage licenses.
+
+- **End credits** (Shoot → Reports → End credits):
+  - **Built from your project as you go:** opening cards, cast, crew sorted into departments, music, stock footage, filming locations, vendors, special thanks, copyright and legal lines.
+  - **Arrange them your way:**
+    - reorder sections (drag them, or use ↑↓ on touch);
+    - rename headings;
+    - leave out a section or a single name;
+    - add your own sections;
+    - choose each section's style: title cards, two-column roll, centred, or names only.
+  - **Live preview:** watch the roll scroll at your chosen speed and runtime.
+  - **Export for any editor:**
+    - text, as two columns or centred, to paste into a scrolling title in Premiere, Resolve, Final Cut, Avid or Vegas;
+    - CSV;
+    - an **After Effects script** that builds the finished scrolling comp;
+    - **Final Cut XML**, which is new and not yet tested in Final Cut itself;
+    - a PDF for checking spelling with cast and crew.
+- **Licenses** (Budget → Licenses):
+  - **What it tracks:** music, stock and archival footage, photos, fonts, software and other clearances.
+  - **Details for each license:**
+    - terms, territory, media, dates and fee;
+    - status, from Needed to Licensed;
+    - the scenes it's used in and its timecodes;
+    - the license file itself.
+  - **Budget:** fees appear automatically as budget lines, in 4200 Music or the new 4600 Licensing & Clearances account.
+  - **Credits:** each license suggests its credit line ("Song" Written by… Performed by… Courtesy of…), which goes straight into the end credits.
+  - **Exports:** a music cue sheet and a clearance log (CSV).
+  - **Warnings:** music or footage that's in the credits but not yet cleared, and licenses about to expire.
+
+## v0.2.1 — 2026-10-19
+
+Polish from the first round of notes on v0.2.0.
+
+- **More room to work:**
+  - **Hide the side panel** on any tab with the ⇤ button or ⌘\ (Ctrl+\), remembered per tab.
+  - **The top bar fits at every width:** Share, theme, Edit and Settings stay visible down to iPad size, and the section names shorten as it gets tight.
+  - **Phone menu:** Write, Breakdown, Budget and the other sections are dropdowns, so the list isn't crowded.
+- **Boards:** one "＋ New board" menu (mood board, whiteboard, story map) that fits the sidebar.
+- **Storyboards:** put the Shot Designer's top-down plan in a panel's **set plan** box, with that shot's camera highlighted (at the start, a move point or the end for moving cameras). "Fill set plans from Shot Designer" does every panel at once, and the plans print in the storyboard PDF.
+- **Character builder:** your species packs live in the same grid as the built-in ones. Click "Create your own pack" (or drop an `.ogspecies` file on it), and use the ⋯ menu to edit, export, delete or import.
+- **Reference:**
+  - **Hover menu:** hover "Reference" in the top bar for every topic and page.
+  - **Sidebar:** categories collapse.
+  - **Crew & departments:** new pages on roles and responsibilities, from producer and 1st AD to 2nd AC, best boy, gaffer and colourist.
+  - **Smartphone cinematography:** a new page on sensors, codecs, Apple Log and ProRes, storage and rigging, with a phone recording calculator.
+  - **Lens pages:** "f-stops & T-stops" and "Lens mounts & adapters" are now separate pages.
+  - **Library:** added DCP-o-matic (free DCP creation) and the Blackmagic Camera app (iOS and Android).
+  - **Story structures:** they show where each beat falls on short scripts too, and which scene it currently lands on.
+
+## v0.2.0 — 2026-10-19
+
+A big one: new tools for writing, planning the shoot and sharing, and everything works on phones and iPads.
+
+### Write
+- **Screenplay drafts.** Save named drafts, or let Open Gate save one a day while you write and before imports. Read any draft, compare two of them (what was added, cut, changed or moved, and how the page count changed), restore a draft, or copy a single scene back.
+- **Scene variants.** Keep alternate versions of a scene ("Ending B") and switch between them.
+- **Production revisions.** Lock the White draft and work through Blue, Pink, Yellow and the rest of the colours. Changed lines get a * in the margin, pages that grow become 12A and 12B, and the PDF prints the revision colour and date. Breakdown and Stripboard flag scenes changed since the last draft.
+- **Story Bible** (Write → Story Bible): a logline, synopsis, tone and themes, plus:
+  - **story days** for every scene, filled in from the scene headings; they feed continuity and the breakdown;
+  - places linked to real shooting locations;
+  - groups and factions;
+  - a glossary;
+  - genre-aware rules of the world.
+- **Character builder:**
+  - relationships, with a relationship map;
+  - species packs, plus your own packs, which you can export and import as `.ogspecies` files;
+  - archetypes, arcs and custom profile fields.
+
+### Visualize
+- **Shot Designer** (Visualize → Shot Designer):
+  - a top-down plan for each scene, with actors, cameras, lights, walls and props;
+  - each camera's field of view is drawn accurately for its lens and sensor;
+  - each camera becomes a Shot List row; a moving camera gets a storyboard panel at its start, at each move point and at its end;
+  - pinch, pan and long-press on touch screens.
+- **Story maps on the board canvas:**
+  - connectors that follow the items they join, with labels, colours, dashes and arrowheads;
+  - live cards for characters, places, scenes, locations and shots;
+  - `[[links]]` in notes, and character sheets show which boards mention them;
+  - templates: relationship map, beat board, story-day timeline, investigation board and places map;
+  - auto-arrange as a grid, circle, tree or timeline.
+
+### Budget
+- **Gear manifest** (Budget → Gear): mark each item Own, Rent, Borrow or Buy.
+  - Rented and bought items become budget lines.
+  - It shows how much the gear you own saves you, with an optional insurance and upkeep line.
+  - Exports a PDF and a CSV.
+- **Budget:**
+  - prep and wrap days, rental weeks, overtime and 6th/7th days;
+  - named numbers and formulas, and sub-items;
+  - flat and per-person fringes, and catering per head;
+  - insurance, bond, fee and tax-credit lines;
+  - a locked approved budget with a cost report;
+  - templates and spreadsheet import;
+  - stats per account, per shoot day and per page.
+
+### Reference (new section)
+- Plain-language guides to story, camera, lenses, lighting, audio, video and data, grip and power, production and post.
+- **Calculators:**
+  - depth of field and field of view;
+  - crop factor;
+  - exposure, ND and shutter angle;
+  - gels and colour temperature;
+  - light falloff;
+  - storage;
+  - audio;
+  - batteries and power load.
+- **Story structures** (Three-Act, Save the Cat, Hero's Journey, Story Circle and more). "Use this structure" adds a beat sheet and puts beat markers in the screenplay's Scenes list.
+- A **learn-more library** of channels, websites, books, podcasts and free tools.
+- "?" links from the tabs to the right Reference page.
+
+### Sharing
+- **Per-tab access.** For every tab, an invite can Edit, View, or not see it at all (Hidden).
+  - Presets: Co-writer, AD / scheduling, Department head and Investor view.
+  - Hidden tabs are never sent to that person.
+  - Older shared projects keep working; the owner can update them for per-tab access from Share.
+- Open Gate's own relay is used by default; you can still set your own relay under Advanced.
+
+### Settings
+- Settings are now split into **This project** (shared) and **This device**:
+  - date style, 12/24-hour clock, week start and units;
+  - your name and colour;
+  - interface size and reduced motion;
+  - storage used and "export all projects";
+  - a list of keyboard shortcuts.
+
+### Phones, tablets and stylus
+- Every new screen works on phones and iPads.
+- Apple Pencil and stylus support where you draw.
+- Touch alternatives to drag and drop.
+- Tabs recover from errors on their own.

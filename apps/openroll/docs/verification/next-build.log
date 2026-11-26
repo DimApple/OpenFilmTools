@@ -1,0 +1,51 @@
+/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.2.1/sdk.SAPwCw/vendor/usr/lib64/blackmagic/BlackmagicRAWSDK
+The Meson build system
+Version: 1.7.0
+Source dir: /workspace/scratch/85b6826418e9/next/OpenRoll
+Build dir: /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.2.1/build
+Build type: native build
+Project name: openroll
+Project version: 0.2.1
+C++ compiler for the host machine: c++ (gcc 14.2.0 "c++ (Debian 14.2.0-19) 14.2.0")
+C++ linker for the host machine: c++ ld.bfd 2.44
+Host machine cpu family: x86_64
+Host machine cpu: x86_64
+Found pkg-config: YES (/workspace/scratch/85b6826418e9/audit/sys/usr/bin/pkg-config) 1.8.1
+Run-time dependency qt6widgets found: YES 6.8.2
+Run-time dependency qt6concurrent found: YES 6.8.2
+Run-time dependency qt6multimedia found: YES 6.8.2
+Build targets in project: 4
+
+openroll 0.2.1
+
+  User defined options
+    braw_test_clip: /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.2.1/vendor/BlackmagicRAW/BlackmagicRAWSpeedTest/profile.braw
+    buildtype     : release
+    sdk_root      : /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.2.1/vendor/usr/lib64/blackmagic/BlackmagicRAWSDK
+
+Found ninja-1.12.1 at /workspace/scratch/85b6826418e9/audit/sys/usr/bin/ninja
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.2.1/build'
+[1/8] Compiling C++ object openroll.p/src_main.cpp.o
+[2/8] Compiling C++ object libopenroll-raw.a.p/src_raw.cpp.o
+[3/8] Linking static target libopenroll-raw.a
+[4/8] Compiling C++ object libopenroll-playback.a.p/src_playback.cpp.o
+[5/8] Linking static target libopenroll-playback.a
+[6/8] Compiling C++ object braw-test.p/tests_braw.cpp.o
+[7/8] Linking target openroll
+[8/8] Linking target braw-test
+INFO: autodetecting backend as ninja
+INFO: calculating backend command to run: /workspace/scratch/85b6826418e9/audit/sys/usr/bin/ninja -C /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.2.1/build
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.2.1/build'
+ninja: no work to do.
+1/2 window lifecycle             OK              0.74s
+2/2 BRAW rendering and transport OK              1.87s
+
+Ok:                 2   
+Expected Fail:      0   
+Fail:               0   
+Unexpected Pass:    0   
+Skipped:            0   
+Timeout:            0   
+
+Full log written to /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.2.1/build/meson-logs/testlog.txt
+This plugin does not support propagateSizeHints()

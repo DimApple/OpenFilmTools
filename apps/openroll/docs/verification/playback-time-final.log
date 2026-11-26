@@ -1,0 +1,29 @@
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.9.2/build'
+[1/6] Compiling C++ object libopenroll-playback.a.p/src_vlc.cpp.o
+[2/6] Linking static target libopenroll-playback.a
+[3/6] Linking target braw-test
+[4/6] Linking target openroll
+[5/6] Compiling C++ object vlc-test.p/tests_vlc.cpp.o
+[6/6] Linking target vlc-test
+INFO: autodetecting backend as ninja
+INFO: calculating backend command to run: /workspace/scratch/85b6826418e9/audit/sys/usr/bin/ninja -C /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.9.2/build
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.9.2/build'
+ninja: no work to do.
+1/7 Playback timecode formatting         OK               0.01s
+2/7 Verified ingest and failure recovery OK               0.03s
+3/7 New project form validation          OK               0.04s
+4/7 window and workspace navigation      OK               0.32s
+5/7 Media scan and project persistence   OK               0.70s
+6/7 BRAW rendering and transport         OK               1.64s
+7/7 BRAW to ProRes Proxy export          OK               1.82s
+
+Ok:                 7   
+Expected Fail:      0   
+Fail:               0   
+Unexpected Pass:    0   
+Skipped:            0   
+Timeout:            0   
+
+Full log written to /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.9.2/build/meson-logs/testlog.txt
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()

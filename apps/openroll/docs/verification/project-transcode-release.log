@@ -1,0 +1,45 @@
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.11.0/build'
+[1/20] Compiling C++ object new-project-test.p/src_new_project.cpp.o
+[2/20] Compiling C++ object transcode-project-test.p/tests_transcode_project.cpp.o
+[3/20] Compiling C++ object openroll.p/src_main.cpp.o
+[4/20] Compiling C++ object openroll.p/src_new_project.cpp.o
+[5/20] Linking target new-project-test
+[6/20] Compiling C++ object libopenroll-project.a.p/src_project.cpp.o
+[7/20] Compiling C++ object libopenroll-project.a.p/src_media_scan.cpp.o
+[8/20] Linking static target libopenroll-project.a
+[9/20] Compiling C++ object project-test.p/tests_project.cpp.o
+[10/20] Linking target project-test
+[11/20] Compiling C++ object openroll.p/src_ingest_widget.cpp.o
+[12/20] Compiling C++ object libopenroll-playback.a.p/src_playback.cpp.o
+[13/20] Linking static target libopenroll-playback.a
+[14/20] Linking target braw-test
+[15/20] Linking target vlc-test
+[16/20] Compiling C++ object openroll.p/src_proxy_widget.cpp.o
+[17/20] Compiling C++ object openroll.p/src_media.cpp.o
+[18/20] Linking target openroll
+[19/20] Compiling C++ object transcode-project-test.p/src_proxy_widget.cpp.o
+[20/20] Linking target transcode-project-test
+INFO: autodetecting backend as ninja
+INFO: calculating backend command to run: /workspace/scratch/85b6826418e9/audit/sys/usr/bin/ninja -C /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.11.0/build
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.11.0/build'
+ninja: no work to do.
+1/8 Playback timecode formatting         OK               0.01s
+2/8 Verified ingest and failure recovery OK               0.02s
+3/8 New project form validation          OK               0.05s
+4/8 Transcode follows the active project OK               0.04s
+5/8 window and workspace navigation      OK               0.34s
+6/8 Media scan and project persistence   OK               0.72s
+7/8 BRAW rendering and transport         OK               1.70s
+8/8 BRAW to ProRes Proxy export          OK               1.99s
+
+Ok:                 8   
+Expected Fail:      0   
+Fail:               0   
+Unexpected Pass:    0   
+Skipped:            0   
+Timeout:            0   
+
+Full log written to /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.11.0/build/meson-logs/testlog.txt
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()

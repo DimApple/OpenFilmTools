@@ -1,0 +1,53 @@
+import type { Project } from '../model/types';
+import { SCHEMA_VERSION, newProject } from '../model/defaults';
+import { moveLegacyFestivals } from '../budget/festivals';
+import { parseFeeText } from '../model/units';
+
+/** Upgrades older saved projects and fills fields added since they were written. */
+export function migrate(input: unknown): Project {
+  const p = input as Partial<Project>;
+  const base = newProject(p.title ?? 'Untitled');
+  const out: Project = {
+    ...base,
+    ...p,
+    production: { ...base.production, ...p.production },
+    titlePage: { ...base.titlePage, ...p.titlePage },
+    schedule: { ...base.schedule, ...p.schedule, colors: { ...p.schedule?.colors } },
+    schemaVersion: SCHEMA_VERSION,
+  } as Project;
+  out.categories = p.categories?.length ? p.categories : base.categories;
+  // v2: call sheets and storyboard frames
+  out.callSheets = p.callSheets && typeof p.callSheets === 'object' ? p.callSheets : {};
+  out.storyboard = Array.isArray(p.storyboard) ? p.storyboard : [];
+  // v3: plan, docs, A/V scripts, boards
+  for (const k of ['contacts', 'tasks', 'docs', 'avScripts', 'boards'] as const) {
+    (out as unknown as Record<string, unknown>)[k] = Array.isArray(p[k]) ? p[k] : [];
+  }
+  // v4: budget
+  const b = p.budget as Partial<Project['budget']> | undefined;
+  out.budget = b && typeof b === 'object'
+    ? { ...base.budget, ...b, accounts: b.accounts?.length ? b.accounts : base.budget.accounts, lines: b.lines ?? [], fringes: b.fringes ?? base.budget.fringes, scenarios: b.scenarios ?? [], expenses: b.expenses ?? [], licenses: b.licenses ?? [], paperwork: b.paperwork ?? [], clearances: b.clearances ?? [], timecards: b.timecards ?? [], agreements: b.agreements ?? [], fundingSources: b.fundingSources ?? [], festivals: b.festivals ?? [], festivalCosts: b.festivalCosts ?? [] }
+    : base.budget;
+  // v5: character profiles
+  out.characters = Array.isArray(p.characters) ? p.characters : [];
+  out.relationships = Array.isArray(p.relationships) ? p.relationships : [];
+  out.characterMap = p.characterMap && typeof p.characterMap === 'object' ? p.characterMap : {};
+  // Release: festivals (moved from the budget for projects that aren't shared), social, distribution.
+  for (const k of ['festivals', 'socialPosts', 'deliverables', 'outlets'] as const) {
+    (out as unknown as Record<string, unknown>)[k] = Array.isArray(p[k]) ? p[k] : [];
+  }
+  if (!p.share) moveLegacyFestivals(out);
+  // v0.6: location fees typed as text become an amount (per day or flat); other words stay as a note.
+  out.locations = out.locations.map((l) => {
+    if (l.feeAmount != null || !l.fee?.trim()) return l;
+    const f = parseFeeText(l.fee);
+    return f ? { ...l, feeAmount: f.amount, feePer: f.per, fee: f.note } : l;
+  });
+  // Licenses: older budgets get the Licensing & Clearances account.
+  if (!out.budget.accounts.some((a) => a.code === '4600')) {
+    const acc = { id: 'acc-4600', code: '4600', name: 'Licensing & Clearances', group: 'post' as const };
+    const at = out.budget.accounts.findIndex((a) => a.code > '4600');
+    out.budget = { ...out.budget, accounts: at < 0 ? [...out.budget.accounts, acc] : [...out.budget.accounts.slice(0, at), acc, ...out.budget.accounts.slice(at)] };
+  }
+  return out;
+}

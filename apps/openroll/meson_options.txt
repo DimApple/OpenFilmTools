@@ -1,0 +1,4 @@
+option('sdk_root', type: 'string', value: '', description: 'Absolute path to the extracted Blackmagic RAW SDK')
+option('braw_test_clip', type: 'string', value: '', description: 'Absolute path to a multi-frame BRAW test clip')
+option('windows_braw_headers', type: 'string', value: '', description: 'Folder containing the MIDL-generated BlackmagicRawAPI.h')
+option('windows_vlc_sdk', type: 'string', value: '', description: 'VLC 3 x64 SDK folder containing include and lib')

@@ -1,0 +1,145 @@
+import { CrewRolePicker } from '../components/CrewRolePicker';
+import { RateLink, useSeesBudget } from '../components/PlanBudget';
+import { useState } from 'react';
+import { useDerived, useProject, useStore } from '../store/project';
+import { newId } from '../model/ids';
+import type { Contact, ContactKind } from '../model/types';
+import { download, safeName } from '../io/files';
+import { contactRows, contactsCsv, contactsVcf, type ContactRow } from '../io/exports';
+import { deletedToast } from '../components/deleted';
+import { More } from '../components/More';
+import { Hint } from '../components/Hint';
+import { toast } from '../components/common';
+import { UnionPicker } from '../components/UnionPicker';
+import { SocietiesPicker } from '../components/SocietiesPicker';
+import type { Societied } from '../paperwork/societies';
+import { newCastMember, unionBadge, type Unioned } from '../paperwork/unions';
+
+// Contacts: one place for everyone on the production. Cast and crew are the same records
+// the call sheets and Day Out of Days use; other contacts (vendors, agents, location owners) live here.
+
+const KINDS: { id: ContactKind; label: string }[] = [
+  { id: 'vendor', label: 'Vendor' }, { id: 'location', label: 'Location' }, { id: 'agent', label: 'Agent / rep' },
+  { id: 'crew', label: 'Crew (not daily)' }, { id: 'cast', label: 'Cast (other)' }, { id: 'other', label: 'Other' },
+];
+
+type Row = ContactRow;
+
+/** Minimal vCard reader (FN, ORG, TITLE, TEL, EMAIL, NOTE). */
+export function parseVCards(text: string): Omit<Contact, 'id'>[] {
+  const cards = text.replace(/\r\n[ \t]/g, '').split(/BEGIN:VCARD/i).slice(1);
+  return cards.map((c) => {
+    const get = (k: string) => (c.match(new RegExp(`^${k}(?:;[^:\\n]*)?:(.*)$`, 'im'))?.[1] ?? '').replace(/\\,/g, ',').replace(/\\n/g, '\n').trim();
+    let name = get('FN');
+    if (!name) { const n = get('N').split(';'); name = [n[1], n[0]].filter(Boolean).join(' '); }
+    return { name: name || 'Unnamed', kind: 'other' as ContactKind, role: get('TITLE'), company: get('ORG').replace(/;/g, ' ').trim(), phone: get('TEL'), email: get('EMAIL'), notes: get('NOTE') };
+  });
+}
+
+export function ContactsTab() {
+  const p = useProject();
+  const d = useDerived();
+  const update = useStore((s) => s.update);
+  const [q, setQ] = useState('');
+  const [group, setGroup] = useState<'all' | Row['group']>('all');
+  const [over, setOver] = useState(false);
+  const sees = useSeesBudget();
+
+  const rows = contactRows(p);
+  const shown = rows.filter((r) => (group === 'all' || r.group === group) && (!q || `${r.name} ${r.role} ${r.company} ${r.phone} ${r.email}`.toLowerCase().includes(q.toLowerCase())));
+
+  const set = (r: Row, field: 'name' | 'role' | 'company' | 'phone' | 'email' | 'kind', v: string) => update((dr) => {
+    const [kind, id] = r.key.split(':');
+    if (kind === 'cast') {
+      const c = dr.cast.find((x) => x.id === id)!;
+      if (field === 'name') c.actorName = v; else if (field === 'phone') c.phone = v; else if (field === 'email') c.email = v;
+    } else if (kind === 'crew') {
+      const c = dr.crew.find((x) => x.id === id)!;
+      if (field === 'name') c.name = v; else if (field === 'role') c.role = v; else if (field === 'phone') c.phone = v;
+    } else {
+      const c = dr.contacts.find((x) => x.id === id)!;
+      (c as unknown as Record<string, string>)[field] = v;
+    }
+  }, null);
+
+  const setUnion = (r: Row, patch: Unioned & Societied) => update((dr) => {
+    const [kind, id] = r.key.split(':');
+    const c = kind === 'cast' ? dr.cast.find((x) => x.id === id) : kind === 'crew' ? dr.crew.find((x) => x.id === id) : dr.contacts.find((x) => x.id === id);
+    if (!c) return;
+    for (const [k, v] of Object.entries(patch)) { if (v === undefined) delete (c as Record<string, unknown>)[k]; else (c as Record<string, unknown>)[k] = v; }
+  }, 'Union');
+
+  const remove = (r: Row) => {
+    const [kind, id] = r.key.split(':');
+    update((dr) => {
+      if (kind === 'cast') dr.cast = dr.cast.filter((x) => x.id !== id);
+      else if (kind === 'crew') dr.crew = dr.crew.filter((x) => x.id !== id);
+      else dr.contacts = dr.contacts.filter((x) => x.id !== id);
+    }, 'Remove contact');
+    deletedToast(r.name || 'contact');
+  };
+
+  const add = (g: Row['group']) => update((dr) => {
+    if (g === 'Cast') dr.cast.push(newCastMember(p, Math.max(0, ...dr.cast.map((c) => c.castNumber)) + 1));
+    else if (g === 'Crew') dr.crew.push({ id: newId(), name: '', role: '', dailyDefault: true });
+    else dr.contacts.push({ id: newId(), name: '', kind: 'vendor', role: '', company: '', phone: '', email: '', notes: '' });
+  }, 'Add contact');
+
+  const importFiles = async (files: File[]) => {
+    const vcf = files.filter((f) => /\.vcf$/i.test(f.name) || f.type === 'text/vcard');
+    if (!vcf.length) { toast('Drop contact cards (.vcf) to import them.'); return; }
+    const cards = (await Promise.all(vcf.map((f) => f.text()))).flatMap(parseVCards);
+    update((dr) => { for (const c of cards) dr.contacts.push({ id: newId(), ...c }); }, `Import ${cards.length} contacts`);
+    toast(`Imported ${cards.length} contact${cards.length > 1 ? 's' : ''}`);
+  };
+
+  const missingCast = d.characters.filter((c) => !p.cast.some((x) => x.characterName === c.name));
+
+  return (
+    <div className={`contacts-tab pad scroll ${over ? 'drop-hover' : ''}`}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); void importFiles([...e.dataTransfer.files]); }}>
+      <div className="toolbar flat">
+        <h3>Contacts</h3>
+        <input placeholder="Search name, role, phone…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="seg">
+          {(['all', 'Cast', 'Crew', 'Contacts'] as const).map((g) => <button key={g} className={group === g ? 'active' : ''} onClick={() => setGroup(g)}>{g === 'all' ? 'All' : g === 'Contacts' ? 'Other' : g}</button>)}
+        </div>
+        <span className="spacer" />
+        <button className="primary" onClick={() => add('Contacts')}>+ Contact</button>
+        <More label="More contact actions">
+        {missingCast.length > 0 && <button onClick={() => update((dr) => { let n = Math.max(0, ...dr.cast.map((c) => c.castNumber)); for (const c of missingCast) dr.cast.push(newCastMember(p, ++n, c.name)); }, 'Add cast from script')}>+ {missingCast.length} characters from script</button>}
+        <button onClick={() => add('Cast')}>+ Cast</button>
+        <button onClick={() => add('Crew')}>+ Crew</button>
+        <label className="button-like">Import .vcf<input type="file" accept=".vcf,text/vcard" multiple hidden onChange={(e) => { void importFiles([...(e.target.files ?? [])]); e.target.value = ''; }} /></label>
+        <button onClick={() => download(`${safeName(p.title)} contacts.vcf`, contactsVcf(shown), 'text/vcard')}>Export .vcf</button>
+        <button onClick={() => download(`${safeName(p.title)} contacts.csv`, contactsCsv(shown), 'text/csv')}>CSV</button>
+        </More>
+      </div>
+      <table className="table contacts cards-on-phone" onDoubleClick={(e) => { if ((e.target as HTMLElement).closest('tbody tr')) return; add(group === 'Cast' || group === 'Crew' ? group : 'Contacts'); }}>
+        <thead><tr><th>Group</th><th>Name</th><th>Role</th><th>Company / type</th><th>Phone</th><th>Email</th><th>Union & societies</th>{sees && <th>Rate</th>}<th /></tr></thead>
+        <tbody>
+          {shown.map((r) => (
+            <tr key={r.key}>
+              <td><span className={`pill g-${r.group}`}>{r.group === 'Contacts' ? KINDS.find((k) => k.id === r.kind)?.label ?? 'Other' : r.group}</span></td>
+              <td><input value={r.name} placeholder={r.group === 'Cast' ? 'Actor name' : 'Name'} onChange={(e) => set(r, 'name', e.target.value)} /></td>
+              <td data-label="Role">{r.group === 'Cast' ? <span className="muted">{r.role}</span> : r.group === 'Crew' ? <CrewRolePicker value={r.role} onChange={(v) => set(r, 'role', v)} /> : <input value={r.role} placeholder="Role" onChange={(e) => set(r, 'role', e.target.value)} />}</td>
+              <td className={r.group === 'Contacts' ? undefined : 'na'}>{r.group === 'Contacts'
+                ? <div className="row contact-company"><input value={r.company} placeholder="Company" onChange={(e) => set(r, 'company', e.target.value)} />
+                    <select value={r.kind} onChange={(e) => set(r, 'kind', e.target.value)}>{KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}</select></div>
+                : <span className="muted small">—</span>}</td>
+              <td><input value={r.phone} onChange={(e) => set(r, 'phone', e.target.value)} />{r.phone && <a className="icon-link" href={`tel:${r.phone}`} title="Call">☎</a>}</td>
+              <td className={r.group === 'Crew' ? 'na' : undefined}>{r.group === 'Crew' ? <span className="muted small">—</span> : <><input value={r.email} onChange={(e) => set(r, 'email', e.target.value)} />{r.email && <a className="icon-link" href={`mailto:${r.email}`} title="Email">✉</a>}</>}</td>
+              <td data-label="Union & societies" title={unionBadge(r)}><UnionPicker compact value={r} onChange={(patch) => setUnion(r, patch)} /><SocietiesPicker value={r} onChange={(patch) => setUnion(r, patch)} /></td>
+              {sees && <td data-label="Rate">{r.group !== 'Contacts' ? <RateLink compact target={{ kind: r.group === 'Cast' ? 'cast' : 'crew', id: r.key.split(':')[1] }} /> : <span className="muted small">—</span>}</td>}
+              <td><button className="icon-btn" onClick={() => remove(r)}>×</button></td>
+            </tr>
+          ))}
+          {!shown.length && <tr><td colSpan={sees ? 9 : 8} className="muted pad"><Hint>{'No contacts. Double-click here to add one, or drop .vcf contact cards anywhere on this page.'}</Hint></td></tr>}
+        </tbody>
+      </table>
+      <p className="muted small"><Hint>{'Double-click empty space to add · drop .vcf cards to import · cast and crew here are the same people on call sheets (edit unavailable dates and daily crew in ⚙ Settings).'}</Hint></p>
+    </div>
+  );
+}

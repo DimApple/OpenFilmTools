@@ -1,0 +1,184 @@
+--- a/meson.build
++++ b/meson.build
+@@ -23,7 +23,7 @@
+     dependencies: cpp.find_library('libvlc', dirs: [vlc_root / 'lib']),
+   )
+   qt = [
+-    dependency('qt6', modules: ['Widgets', 'Concurrent', 'Multimedia', 'Sql'], method: 'qmake'),
++    dependency('qt6', modules: ['Core', 'Gui', 'Widgets', 'Concurrent', 'Multimedia', 'Sql'], method: 'qmake'),
+     vlc,
+     cpp.find_library('oleaut32'),
+   ]
+--- a/scripts/build-windows.ps1
++++ b/scripts/build-windows.ps1
+@@ -5,7 +5,7 @@
+     [Parameter(Mandatory)][string]$QtRoot,
+     [Parameter(Mandatory)][string]$VlcRoot,
+     [Parameter(Mandatory)][string]$FfmpegBin,
+-    [string]$BuildDir = (Join-Path $PSScriptRoot '..\build-windows'),
++    [string]$BuildDir,
+     [switch]$Launch
+ )
+ $ErrorActionPreference = 'Stop'
+@@ -20,6 +20,7 @@
+ $QtRoot = (Resolve-Path $QtRoot).Path
+ $VlcRoot = (Resolve-Path $VlcRoot).Path
+ $FfmpegBin = (Resolve-Path $FfmpegBin).Path
++if ([string]::IsNullOrWhiteSpace($BuildDir)) { $BuildDir = Join-Path $env:LOCALAPPDATA 'OpenRoll\build-0.17.2-x64' }
+ $BuildDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BuildDir)
+ if ($env:VSCMD_ARG_TGT_ARCH -ne 'x64') { throw 'Open the Visual Studio x64 Native Tools command prompt first.' }
+ $VlcSdk = Join-Path $VlcRoot 'sdk'
+@@ -39,7 +40,11 @@
+ $PreviousBraw = $env:OPENROLL_BRAW_RUNTIME
+ $PreviousVlc = $env:VLC_PLUGIN_PATH
+ try {
++    $MesonBin = Join-Path $HOME 'openroll-build-env\Scripts'
+     $env:Path = "$QtBin;$VlcRoot;$FfmpegBin;$PreviousPath"
++    if (Test-Path -LiteralPath (Join-Path $MesonBin 'meson.exe')) {
++        $env:Path = "$MesonBin;$env:Path"
++    }
+     $env:OPENROLL_BRAW_RUNTIME = $SdkRuntime
+     $env:VLC_PLUGIN_PATH = Join-Path $VlcRoot 'plugins'
+     foreach ($Tool in @('meson', 'ninja', 'midl', 'cl')) {
+--- /dev/null
++++ b/scripts/package-windows.ps1
+@@ -0,0 +1,46 @@
++[CmdletBinding()]
++param(
++    [string]$BuildDir = "$env:LOCALAPPDATA\OpenRoll\build-0.17.2-x64",
++    [string]$QtRoot = 'C:\Qt\6.12.1\msvc2022_64',
++    [string]$VlcRoot = 'C:\Dev\vlc-3.0.24',
++    [string]$Output = "$HOME\Desktop\OpenRoll-0.17.2-Windows-x64.zip"
++)
++$ErrorActionPreference = 'Stop'
++$exe = Join-Path $BuildDir 'openroll.exe'
++$deploy = Join-Path $QtRoot 'bin\windeployqt.exe'
++foreach ($required in @($exe, $deploy, "$VlcRoot\libvlc.dll", "$VlcRoot\libvlccore.dll", "$VlcRoot\plugins")) {
++    if (!(Test-Path -LiteralPath $required)) { throw "Missing: $required" }
++}
++if (Test-Path -LiteralPath $Output) { throw "Output already exists: $Output" }
++$work = Join-Path ([IO.Path]::GetTempPath()) ('openroll-package-' + [guid]::NewGuid())
++$stage = Join-Path $work 'OpenRoll'
++$previousPath = $env:Path
++try {
++    New-Item -ItemType Directory -Path $stage | Out-Null
++    Copy-Item -LiteralPath $exe -Destination $stage
++    $env:Path = "$QtRoot\bin;$previousPath"
++    & $deploy --release --no-compiler-runtime --no-translations --dir $stage (Join-Path $stage 'openroll.exe')
++    if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE." }
++    Copy-Item -LiteralPath "$VlcRoot\libvlc.dll","$VlcRoot\libvlccore.dll" -Destination $stage
++    Copy-Item -LiteralPath "$VlcRoot\plugins" -Destination (Join-Path $stage 'vlc-plugins') -Recurse
++    foreach ($required in @('Qt6Core.dll', 'Qt6Multimedia.dll', 'platforms\qwindows.dll', 'sqldrivers\qsqlite.dll')) {
++        if (!(Test-Path -LiteralPath (Join-Path $stage $required))) { throw "Qt deployment omitted $required" }
++    }
++    foreach ($notice in @('COPYING', 'COPYING.txt', 'THANKS.txt')) {
++        $path = Join-Path $VlcRoot $notice
++        if (Test-Path -LiteralPath $path) { Copy-Item -LiteralPath $path -Destination (Join-Path $stage "VLC-$notice") }
++    }
++    Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\docs\THIRD-PARTY.md') -Destination $stage
++    Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\docs\WINDOWS-PORTABLE.md') -Destination $stage
++    @'
++@echo off
++setlocal
++set "VLC_PLUGIN_PATH=%~dp0vlc-plugins"
++start "" "%~dp0openroll.exe"
++'@ | Set-Content -LiteralPath (Join-Path $stage 'Launch OpenRoll.cmd') -Encoding Ascii
++    Compress-Archive -LiteralPath $stage -DestinationPath $Output
++    Get-FileHash -LiteralPath $Output -Algorithm SHA256
++} finally {
++    $env:Path = $previousPath
++    if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
++}
+--- a/src/vlc.cpp
++++ b/src/vlc.cpp
+@@ -7,6 +7,9 @@
+ #include <cmath>
+ #include <cstring>
+ #include <cstdlib>
++#ifdef _MSC_VER
++#include <malloc.h>
++#endif
+ #include <mutex>
+ #include <stdexcept>
+ #include <utility>
+@@ -42,10 +45,16 @@
+         const auto alignedHeight = (*height + 31u) & ~31u;
+         std::lock_guard<std::mutex> lock(self.pixels);
+         const auto bytes = size_t(alignedWidth) * alignedHeight * 4;
++#ifdef _MSC_VER
++        auto* allocation = static_cast<uchar*>(_aligned_malloc(bytes, 32));
++        const auto release = _aligned_free;
++#else
+         auto* allocation = static_cast<uchar*>(std::aligned_alloc(32, bytes));
++        const auto release = std::free;
++#endif
+         if (!allocation) return 0;
+         self.buffer = QImage(allocation, int(alignedWidth), int(alignedHeight), alignedWidth * 4,
+-                             QImage::Format_RGB32, std::free, allocation);
++                             QImage::Format_RGB32, release, allocation);
+         if (self.buffer.isNull()) return 0;
+         self.visible = QRect(0, 0, int(*width), int(*height));
+         std::memcpy(chroma, "RV32", 4);
+--- a/src/media.cpp
++++ b/src/media.cpp
+@@ -526,7 +526,7 @@
+         {"Codec", unknown(clip->codec)}, {"Size", QLocale().formattedDataSize(clip->bytes)}
+     };
+     for (const auto& value : values) {
+-        auto* item = new QTreeWidgetItem(metadata, value);
++        auto* item = new QTreeWidgetItem(metadata, {value.at(0)});
+         item->setToolTip(1, value.at(1));
+         item->setForeground(0, QColor(OpenRollTheme::tokens.value("@muted")));
+         auto* label = new QLabel(value.at(1), metadata);
+--- a/docs/WINDOWS.md
++++ b/docs/WINDOWS.md
+@@ -1,8 +1,6 @@
+ # OpenRoll Windows x64 port
+ 
+-This is a source checkpoint. Linux compilation and regression results are
+-included. Native Windows compilation, playback, backup and installation still
+-need verification.
++This source checkpoint incorporates fixes tested in a Windows VM. Linux regression results are included. Windows backup, export and portable deployment still need verification.
+ 
+ ## Build environment
+ 
+@@ -44,3 +42,20 @@
+ BRAW-to-ProRes export, cancel and retry, and a project reopen. Also test the
+ installed executable on a clean Windows x64 system with the intended runtime
+ dependencies.
++
++## VM validation and portable staging
++
++The Windows VM build was confirmed to launch and play BRAW after updating
++the Microsoft Visual C++ x64 Redistributable. The VM also confirmed the
++metadata rendering fix. This archive consolidates the Qt module list,
++MSVC allocator, external build directory and inspector fixes. The portable
++packaging script itself still needs a Windows run.
++
++With the known-good VM build already compiled and OpenRoll closed, run:
++
++```powershell
++powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1
++```
++
++The ZIP is written to your desktop by default. See WINDOWS-PORTABLE.md for
++recipient requirements and validation.
+--- /dev/null
++++ b/docs/WINDOWS-PORTABLE.md
+@@ -0,0 +1,16 @@
++# OpenRoll Windows x64 portable beta
++
++Extract the entire ZIP and double-click Launch OpenRoll.cmd. Keep openroll.exe beside its DLLs and plugin folders.
++Install Microsoft's current Visual C++ x64 Redistributable before launch.
++For BRAW, install Blackmagic RAW 6.0 with its Windows SDK component, or set
++OPENROLL_BRAW_RUNTIME to the extracted SDK's Win\Libraries directory.
++For metadata, thumbnails and export, put Windows ffmpeg.exe and ffprobe.exe
++on PATH before launching. The portable ZIP leaves both external dependencies
++to the recipient.
++
++The packaging script stages your compiled OpenRoll executable and uses
++windeployqt to deploy Qt. It also copies VLC 3 runtime files and plugins from
++your VLC installation. Use the resulting archive for local validation first.
++Test on a Windows x64 machine without Qt or the developer terminal. Verify
++startup, BRAW and conventional playback, verified backup and export. Review
++Qt and VLC license obligations before public redistribution. See THIRD-PARTY.md.

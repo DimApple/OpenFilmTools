@@ -1,0 +1,18 @@
+Verified _Proxy.mov
+Verified _ProRes_LT.mov
+Verified _ProRes_422.mov
+Verified _ProRes_HQ.mov
+Verified _ProRes_4444.mov
+Verified _ProRes_4444_XQ.mov
+Verified _DNxHR_LB.mov
+Verified _DNxHR_SQ.mov
+Verified _DNxHR_HQ.mov
+Verified _DNxHR_HQX.mov
+Verified _H264.mkv
+Verified _H264.mp4
+Verified _Audio.wav
+Decoded BRAW export _DNxHR_LB.mov
+Decoded BRAW export _H264.mkv
+Decoded BRAW export _H264.mp4
+Decoded BRAW export _Audio.wav
+BRAW to ProRes Proxy: 1 frames at 24 fps, 2 audio channels, 0.0416667 seconds. Independent decode, timing, no-overwrite and cancellation passed.

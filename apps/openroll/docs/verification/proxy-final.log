@@ -1,0 +1,22 @@
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.6.0/build'
+[1/2] Compiling C++ object proxy-test.p/tests_proxy.cpp.o
+[2/2] Linking target proxy-test
+INFO: autodetecting backend as ninja
+INFO: calculating backend command to run: /workspace/scratch/85b6826418e9/audit/sys/usr/bin/ninja -C /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.6.0/build
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.6.0/build'
+ninja: no work to do.
+1/5 Verified ingest and failure recovery OK               0.03s
+2/5 window lifecycle                     OK               0.27s
+3/5 Media scan and project persistence   OK               0.70s
+4/5 BRAW rendering and transport         OK               2.16s
+5/5 BRAW to ProRes Proxy export          OK               2.21s
+
+Ok:                 5   
+Expected Fail:      0   
+Fail:               0   
+Unexpected Pass:    0   
+Skipped:            0   
+Timeout:            0   
+
+Full log written to /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.6.0/build/meson-logs/testlog.txt
+This plugin does not support propagateSizeHints()

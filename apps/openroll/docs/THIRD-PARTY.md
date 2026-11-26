@@ -1,0 +1,6 @@
+# Third-party components
+
+- Blackmagic Design Blackmagic RAW SDK 6.0 supplies the decoder and its documented Linux interface. Get the SDK, sample media and applicable Developer License Agreement from Blackmagic Design or the supplied archive. See `BlackmagicRAWSDK/Documents/License.txt`. The supplied agreement §1.1(d) provides conditional object-code distribution for the API Libraries. This checkpoint uses local SDK extraction and carries no vendor SDK code, libraries or footage.
+- Qt 6 Widgets, Qt Concurrent and Qt Multimedia are dynamically linked from the system. See [Qt licensing](https://www.qt.io/licensing/open-source-lgpl-obligations).
+- The preview dynamically links system libVLC 3 for conventional media. VLC plugins are supplied by the operating system. The media browser stores projects through Qt’s SQLite driver and calls the system FFprobe and FFmpeg executables for conventional metadata and thumbnails. The BRAW export engine also calls system FFmpeg for ProRes Proxy encoding and MOV muxing. Qt Multimedia may use its system FFmpeg backend.
+- Vendor reference links are available from [Blackmagic Design](https://www.blackmagicdesign.com/developer/products/braw/sdk-and-software), [VideoLAN](https://www.videolan.org/vlc/), [FFmpeg](https://ffmpeg.org/legal.html), and [SQLite](https://sqlite.org/copyright.html).

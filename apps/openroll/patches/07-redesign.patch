@@ -1,0 +1,295 @@
+--- a/README.md
++++ b/README.md
+@@ -1,14 +1,14 @@
+-# OpenRoll 0.16.0 development preview
++# OpenRoll 0.17.0 development preview
+ 
+ This checkpoint covers the dependency audit, the native Qt foundation, Blackmagic's SDK verification, BRAW playback, and conventional playback via libVLC 3, verified media offloading, and a SQLite-backed media workspace. See [milestone status](docs/STATUS.md) and [third-party notices](docs/THIRD-PARTY.md).
+ 
+ ## Workspace navigation
+ 
+-Use the bottom workspace bar or Ctrl+1 for Ingest, Ctrl+2 for Media, Ctrl+3 for Monitor, and Ctrl+4 for Transcode. In Media, choose a folder on the left and select a thumbnail to load the central viewer. The metadata inspector shows the selected clip. The controls above the clip strip switch to a list or filter by filename, codec, or camera. Monitor expands the same viewer without reopening the clip.
++Use the top workspace switcher or Ctrl+1 for Ingest, Ctrl+2 for Media, Ctrl+3 for Monitor, and Ctrl+4 for Transcode. In Media, choose a folder on the left and select a thumbnail to load the central viewer. Press I in Media to show or hide metadata for the selected clip. The controls above the clip strip switch to a list or filter by filename, codec, or camera. Monitor expands the same viewer without reopening the clip.
+ 
+ The playback counters show elapsed time and duration as HH:MM:SS:FF. Audio-only clips show a dash for frames. The metadata inspector continues to show source timecode when available.
+ 
+-In Media or Monitor, press Space to play or pause, comma and period to step, and F for video-only fullscreen. Press Escape or F to return to the workspace. The Export queue shows clip filenames, with full source paths in the tooltips and the current clip's queue position in the progress bar.
++In Media or Monitor, press Space to play or pause, comma and period to step, and F for video-only fullscreen. Press Escape or F to return to the workspace. The Export queue shows clip filenames, with full source paths in the tooltips and the current clip’s queue position and percentage beside the progress bar.
+ 
+ ## Launch on CachyOS
+ 
+--- a/docs/STATUS.md
++++ b/docs/STATUS.md
+@@ -56,7 +56,7 @@
+ 
+ ## 0.7.0 workspace UI
+ 
+-The user confirmed BRAW-to-ProRes was functional and requested a UI/UX pass. The native Qt shell now uses bottom workspace navigation, workspace shortcuts, an active-project header, and a consistent contrast and action hierarchy. Media adds local filtering and an explicit Open action. Playback adds transport shortcuts and timeline actions. Ingest differentiates verified and incomplete results, and Export shows queue position and source filenames.
++The user confirmed BRAW-to-ProRes was functional and requested a UI/UX pass. The native Qt shell uses top workspace navigation, workspace shortcuts, an active-project header, and a consistent contrast and action hierarchy. Media adds local filtering and an explicit Open action. Playback adds transport shortcuts and timeline actions. Ingest differentiates verified and incomplete results, and Transcode shows queue position and source filenames.
+ 
+ All four pages were inspected at the default window size using Qt's offscreen renderer on Debian. The navigation smoke test exercises each workspace button and tracks the active page during programmatic navigation. The ingest, project, BRAW and ProRes test suites were rerun. Native rendering on the CachyOS desktop is pending.
+ 
+--- a/meson.build
++++ b/meson.build
+@@ -1,4 +1,4 @@
+-project('openroll', 'cpp', version: '0.16.0', default_options: ['cpp_std=c++17', 'warning_level=2'])
++project('openroll', 'cpp', version: '0.17.0', default_options: ['cpp_std=c++17', 'warning_level=2'])
+ 
+ qt = [
+   dependency('Qt6Widgets', method: 'pkg-config'),
+--- a/scripts/run-preview.sh
++++ b/scripts/run-preview.sh
+@@ -2,7 +2,7 @@
+ set -euo pipefail
+ 
+ source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+-work="${XDG_CACHE_HOME:-$HOME/.cache}/openroll/preview-0.16.0"
++work="${XDG_CACHE_HOME:-$HOME/.cache}/openroll/preview-0.17.0"
+ mkdir -p -- "$work"
+ sdk="$work/vendor/usr/lib64/blackmagic/BlackmagicRAWSDK"
+ profile="$work/vendor/BlackmagicRAW/BlackmagicRAWSpeedTest/profile.braw"
+--- a/src/ingest_widget.cpp
++++ b/src/ingest_widget.cpp
+@@ -20,7 +20,8 @@
+ #include <QHBoxLayout>
+ #include <QLabel>
+ #include <QLineEdit>
+-#include <QHeaderView>
++#include <QPainter>
++#include <QStyledItemDelegate>
+ #include <QTreeWidget>
+ #include <QProgressBar>
+ #include <QPushButton>
+@@ -31,6 +32,42 @@
+ #include <memory>
+ 
+ namespace {
++class DestinationRow final : public QStyledItemDelegate {
++public:
++    using QStyledItemDelegate::QStyledItemDelegate;
++
++    QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override
++    {
++        return {QStyledItemDelegate::sizeHint(option, index).width(), 48};
++    }
++
++    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override
++    {
++        const auto card = option.rect.adjusted(0, 0, 0, -4);
++        const auto text = card.adjusted(12, 0, -12, 0);
++        const bool selected = option.state.testFlag(QStyle::State_Selected);
++        const auto& tokens = OpenRollTheme::tokens;
++        painter->save();
++        painter->setRenderHint(QPainter::Antialiasing);
++        painter->setPen(Qt::NoPen);
++        painter->setBrush(QColor(tokens.value(selected ? "@accentSoft" : "@raised")));
++        painter->drawRoundedRect(card, 10, 10);
++        painter->setFont(option.font);
++        painter->setPen(option.palette.text().color());
++        painter->drawText(text.adjusted(0, 4, 0, -22), Qt::AlignVCenter,
++                          option.fontMetrics.elidedText(index.data().toString(), Qt::ElideMiddle, text.width()));
++        auto subfont = option.font;
++        subfont.setPixelSize(11);
++        painter->setFont(subfont);
++        painter->setPen(QColor(tokens.value("@muted")));
++        const auto target = index.data(Qt::UserRole).toString();
++        if (!target.isEmpty())
++            painter->drawText(text.adjusted(0, 22, 0, -4), Qt::AlignVCenter,
++                              QFontMetrics(subfont).elidedText("Final copy path · " + target, Qt::ElideMiddle, text.width()));
++        painter->restore();
++    }
++};
++
+ class SourceDrop final : public QLabel {
+ public:
+     explicit SourceDrop(QWidget* parent) : QLabel(parent)
+@@ -70,6 +107,8 @@
+     {
+         const auto urls = event->mimeData()->urls();
+         if (urls.size() != 1 || !urls.front().isLocalFile()) return false;
++        if (QFileInfo(urls.front().toLocalFile()).suffix().compare("openroll", Qt::CaseInsensitive) == 0)
++            return false;
+         const auto actions = event->possibleActions();
+         if (actions.testFlag(Qt::CopyAction)) event->setDropAction(Qt::CopyAction);
+         else if (actions.testFlag(Qt::LinkAction)) event->setDropAction(Qt::LinkAction);
+@@ -155,7 +194,11 @@
+     nameRow->addWidget(copyName, 1);
+ 
+ 
+-    auto* destinationsRow = new QHBoxLayout;
++    auto* destinationActions = new QWidget(this);
++    destinationActions->setObjectName("destinationActions");
++    auto* destinationsRow = new QHBoxLayout(destinationActions);
++    destinationsRow->setContentsMargins(12, 4, 12, 4);
++    destinationsRow->setSpacing(8);
+ 
+ 
+     auto* add = new QPushButton("Add destination…", this);
+@@ -166,15 +209,15 @@
+     destinationsRow->addWidget(add);
+     destinationsRow->addWidget(remove);
+ 
+-    copiesLayout->addLayout(destinationsRow);
+     auto* destinations = new QTreeWidget(this);
+-    destinations->setHeaderLabels({"Save in", "Final copy path"});
++    destinations->setHeaderHidden(true);
+     destinations->setRootIsDecorated(false);
+-    destinations->setAlternatingRowColors(true);
+-    destinations->header()->setSectionResizeMode(QHeaderView::Stretch);
++    destinations->setItemDelegate(new DestinationRow(destinations));
++    destinations->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+     destinations->setAccessibleName("Backup destinations and final copy paths");
+     destinations->setObjectName("ingestDestinations");
+-    copiesLayout->addWidget(destinations, 1);
++    copiesLayout->addWidget(destinations);
++    copiesLayout->addWidget(destinationActions);
+     copiesLayout->addWidget(naming);
+ 
+     auto* validation = new QLabel(this);
+@@ -221,8 +264,9 @@
+         copies->setEnabled(*indexed && !busy);
+         emptyDestinations->setVisible(roots.isEmpty());
+         destinations->setVisible(!roots.isEmpty());
+-        destinations->setFixedHeight(destinations->header()->sizeHint().height() +
+-                                     qMin(roots.size(), qsizetype(4)) * 48 + 4);
++        destinations->setFixedHeight(qMin(roots.size(), qsizetype(4)) * 48 + 2);
++        destinationActions->setFixedHeight(roots.isEmpty() ? 56 : 48);
++        setAction(destinationActions, roots.isEmpty() ? "empty" : "");
+         setAction(add, roots.isEmpty() ? "" : "ghost");
+         naming->setVisible(!roots.isEmpty());
+         remove->setVisible(!roots.isEmpty());
+@@ -238,8 +282,8 @@
+         for (int i = 0; i < roots.size(); ++i) {
+             const auto target = planned.value(i);
+             auto* item = destinations->topLevelItem(i);
+-            item->setText(1, target);
+-            item->setToolTip(1, target);
++            item->setData(0, Qt::UserRole, target);
++            item->setToolTip(0, target.isEmpty() ? roots.at(i) : roots.at(i) + "\n" + target);
+         }
+         const auto prompt = source->text().isEmpty() ? QString("Choose a camera card or folder to copy.")
+                           : roots.isEmpty() ? QString(*indexed ? "Add a backup destination to continue." : "Index the source before adding destinations.")
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -37,24 +37,28 @@
+     return QFileInfo(path).suffix().compare("openroll", Qt::CaseInsensitive) == 0 ? path : QString{};
+ }
+ 
++bool acceptProjectDrop(QDropEvent* event)
++{
++    if (droppedProject(event->mimeData()).isEmpty()) return false;
++    const auto actions = event->possibleActions();
++    if (actions.testFlag(Qt::CopyAction)) event->setDropAction(Qt::CopyAction);
++    else if (actions.testFlag(Qt::LinkAction)) event->setDropAction(Qt::LinkAction);
++    else return false;
++    event->accept();
++    return true;
++}
++
+ class OpenRollWindow final : public QMainWindow {
+ public:
+     OpenRollWindow() { setAcceptDrops(true); }
+     std::function<void(const QString&)> openProject;
+ protected:
+-    void dragEnterEvent(QDragEnterEvent* event) override
+-    {
+-        if (!droppedProject(event->mimeData()).isEmpty() && event->possibleActions().testFlag(Qt::CopyAction)) {
+-            event->setDropAction(Qt::CopyAction);
+-            event->accept();
+-        }
+-    }
++    void dragEnterEvent(QDragEnterEvent* event) override { acceptProjectDrop(event); }
++    void dragMoveEvent(QDragMoveEvent* event) override { acceptProjectDrop(event); }
+     void dropEvent(QDropEvent* event) override
+     {
+         const auto path = droppedProject(event->mimeData());
+-        if (path.isEmpty() || !event->possibleActions().testFlag(Qt::CopyAction)) return;
+-        event->setDropAction(Qt::CopyAction);
+-        event->accept();
++        if (!acceptProjectDrop(event)) return;
+         QTimer::singleShot(0, this, [this, path] { openProject(path); });
+     }
+ };
+@@ -314,7 +318,8 @@
+             auto* layout = new QGridLayout(row);
+             layout->setContentsMargins(12, 4, 12, 4);
+             layout->setVerticalSpacing(0);
+-            auto* name = new QLabel(file.completeBaseName(), row);
++            auto* name = new QLabel(row);
++            name->setText(name->fontMetrics().elidedText(file.completeBaseName(), Qt::ElideMiddle, 340));
+             name->setTextFormat(Qt::PlainText);
+             auto* folder = new QLabel(row);
+             folder->setObjectName("quiet");
+--- a/src/media.cpp
++++ b/src/media.cpp
+@@ -190,7 +190,7 @@
+         QSettings("OpenRoll", "OpenRoll").setValue("media/showMetadata", enabled);
+         inspector->setVisible(enabled && toggle->isVisible());
+     });
+-    auto* metadataShortcut = new QShortcut(QKeySequence("I"), viewer);
++    auto* metadataShortcut = new QShortcut(QKeySequence("I"), this);
+     metadataShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+     connect(metadataShortcut, &QShortcut::activated, toggle, [toggle] {
+         if (toggle->isVisible()) toggle->click();
+--- a/src/playback.cpp
++++ b/src/playback.cpp
+@@ -54,6 +54,21 @@
+ 
+ namespace {
+ constexpr size_t bufferLimit = 5;
++
++class ClipHeading final : public QLabel {
++public:
++    using QLabel::QLabel;
++
++protected:
++    void paintEvent(QPaintEvent*) override
++    {
++        QPainter painter(this);
++        const auto bounds = contentsRect();
++        style()->drawItemText(&painter, bounds, Qt::AlignVCenter, palette(), isEnabled(),
++                              fontMetrics().elidedText(text(), Qt::ElideMiddle, bounds.width()),
++                              QPalette::WindowText);
++    }
++};
+ 
+ enum class TransportIcon { Previous, Play, Pause, Stop, Next, Fullscreen, Speaker, Metadata };
+ 
+@@ -148,7 +163,7 @@
+     metadata->setCheckable(true);
+     metadata->setAccessibleName("Toggle metadata");
+     metadata->setToolTip("Metadata (I)");
+-    status = new QLabel(this);
++    status = new ClipHeading(toolbar);
+     status->setTextFormat(Qt::PlainText);
+     status->setWordWrap(false);
+     status->setMinimumWidth(0);
+--- a/src/theme.hpp
++++ b/src/theme.hpp
+@@ -111,7 +111,7 @@
+   background: @raised; border: 1px solid transparent; border-radius: @rControl;
+   padding: 0 8px; min-height: 32px; selection-background-color: @accentSoft;
+ }
+-QLineEdit:focus, QComboBox:focus { border-color: @accent; }
++QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: @accent; }
+ /* Leave QComboBox::drop-down and ::down-arrow UNSTYLED so Fusion keeps drawing the arrow. */
+ QComboBox QAbstractItemView {
+   background: @surface; border: 1px solid @line; outline: 0;
+@@ -119,7 +119,8 @@
+ }
+ 
+ /* Lists and trees */
+-QListView, QTreeView, QListWidget, QTreeWidget { background: transparent; border: 0; outline: 0; }
++QListView, QTreeView, QListWidget, QTreeWidget { background: transparent; border: 1px solid transparent; outline: 0; }
++QListView:focus, QTreeView:focus { border-color: @accent; }
+ QTreeView::item, QListView::item { padding: 4px 8px; border-radius: @rControl; }
+ QTreeView::item:hover, QListView::item:hover { background: @raised; }
+ QTreeView::item:selected, QListView::item:selected { background: @accentSoft; color: @text; }
+@@ -185,6 +186,7 @@
+ }
+ QToolButton#workspaceButton:hover { color: @text; }
+ QToolButton#workspaceButton:checked { background: @accentSoft; color: @text; }
++QWidget#destinationActions[actionRole="empty"] { border: 1px dashed @line; border-radius: @rCard; }
+ QLabel#sourceDrop[dragActive="true"] { border: 1px solid @accent; background: @accentSoft; }
+ QToolButton#projectMenu, QToolButton#viewToggle {
+     background: @raised; border: 1px solid transparent; border-radius: @rControl;

@@ -1,0 +1,258 @@
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,4 @@
+-# OpenRoll 0.17.1 development preview
++# OpenRoll 0.17.2 development preview
+ 
+ This checkpoint covers the dependency audit, the native Qt foundation, Blackmagic's SDK verification, BRAW playback, and conventional playback via libVLC 3, verified media offloading, and a SQLite-backed media workspace. See [milestone status](docs/STATUS.md) and [third-party notices](docs/THIRD-PARTY.md).
+ 
+@@ -10,7 +10,8 @@
+ project. OpenRoll indexes the originals in place. A single source dropped into
+ Ingest also becomes the source for a verified copy. If you drop several sources
+ into Ingest, OpenRoll switches to Media to link them as a batch. To make a
+-verified backup, select one source and add backup destinations in Ingest.
++verified backup, import one source and select **Back up…** in the bottom-right
++corner of Ingest. Set destinations and start the verified copy in the dialog.
+ 
+ The playback counters show elapsed time and duration as HH:MM:SS:FF. Audio-only clips show a dash for frames. The metadata inspector continues to show source timecode when available.
+ 
+--- a/docs/STATUS.md
++++ b/docs/STATUS.md
+@@ -80,11 +80,10 @@
+ 
+ Conventional media and BRAW share a multi-preset export queue. FFprobe verified all 13 presets using H.264/AAC input. Independent FFmpeg decoding also passed on short BRAW outputs in ProRes Proxy, DNxHR LB, H.264 MKV/MP4, and WAV. The VLC test checks that conventional video renders an initial frame, pauses, and resumes on explicit Play. Audio-only input retains its previous behavior. The Debian tests use short fixtures. Desktop validation on CachyOS remains pending.
+ 
+-## 0.17.1 Project media drops
++## 0.17.2 Import and verified backup
+ 
+-Both Ingest and Media accept local footage drops and save the discovered
+-clips in the currently open project. Existing paths are referenced in
+-place. A single Ingest drop also sets up a verified copy. Multiple sources
+-dropped into Ingest are indexed as a batch in Media. Automated Qt drop events
+-verified the Media clip list, a project reopen and preservation of the original
+-files. Desktop drag and drop on CachyOS remains to be checked.
++Ingest shows the footage drop area and file/folder pickers. The bottom-right
++Back up button opens a separate verified-copy dialog for the indexed source.
++Automated tests verified the dialog stays hidden during ordinary import,
++opens on demand and produces a verified backup and project transfer record.
++Native CachyOS desktop behavior has not been tested in this release.
+--- a/meson.build
++++ b/meson.build
+@@ -1,4 +1,4 @@
+-project('openroll', 'cpp', version: '0.17.1', default_options: ['cpp_std=c++17', 'warning_level=2'])
++project('openroll', 'cpp', version: '0.17.2', default_options: ['cpp_std=c++17', 'warning_level=2'])
+ 
+ qt = [
+   dependency('Qt6Widgets', method: 'pkg-config'),
+--- a/scripts/run-preview.sh
++++ b/scripts/run-preview.sh
+@@ -2,7 +2,7 @@
+ set -euo pipefail
+ 
+ source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+-work="${XDG_CACHE_HOME:-$HOME/.cache}/openroll/preview-0.17.1"
++work="${XDG_CACHE_HOME:-$HOME/.cache}/openroll/preview-0.17.2"
+ mkdir -p -- "$work"
+ sdk="$work/vendor/usr/lib64/blackmagic/BlackmagicRAWSDK"
+ profile="$work/vendor/BlackmagicRAW/BlackmagicRAWSpeedTest/profile.braw"
+--- a/src/ingest_widget.cpp
++++ b/src/ingest_widget.cpp
+@@ -4,6 +4,7 @@
+ #include "project.hpp"
+ 
+ #include <QDesktopServices>
++#include <QDialog>
+ #include <QDir>
+ #include <QDragEnterEvent>
+ #include <QDropEvent>
+@@ -77,8 +78,8 @@
+         setWordWrap(true);
+         setTextFormat(Qt::PlainText);
+         setObjectName("sourceDrop");
+-        setFixedHeight(120);
+-        setText("Drop a card, folder or file here\nor choose one below");
++        setMinimumHeight(200);
++        setText("Drop footage or a camera folder here\nto add it to the project");
+     }
+     std::function<void(const QString&)> picked;
+ 
+@@ -141,29 +142,18 @@
+     auto* sections = new QVBoxLayout(column);
+     sections->setContentsMargins(0, 0, 0, 0);
+     sections->setSpacing(16);
+-    auto section = [column, sections](int index, const QString& name) {
+-        auto* body = new QVBoxLayout;
+-        body->setSpacing(8);
+-        sections->addLayout(body);
+-        auto* header = new QHBoxLayout;
+-        header->setSpacing(8);
+-        auto* badge = new QLabel(QString::number(index), column);
+-        badge->setObjectName("ingestStep");
+-        badge->setFixedSize(20, 20);
+-        badge->setAlignment(Qt::AlignCenter);
+-        header->addWidget(badge);
+-        header->addWidget(sectionLabel(name, column));
+-        header->addStretch();
+-        body->addLayout(header);
+-        auto* card = new QFrame(column);
++    auto section = [](QVBoxLayout* parent, const QString& name) {
++        parent->addWidget(sectionLabel(name, parent->parentWidget()));
++        auto* card = new QFrame(parent->parentWidget());
+         card->setObjectName("card");
+-        body->addWidget(card);
++        parent->addWidget(card);
+         auto* contents = new QVBoxLayout(card);
+         contents->setContentsMargins(16, 16, 16, 16);
+         contents->setSpacing(8);
+         return contents;
+     };
+-    auto* sourceLayout = section(1, "Source");
++    sections->addStretch();
++    auto* sourceLayout = section(sections, "Import footage");
+     auto* sourceGroup = sourceLayout->parentWidget();
+     auto* source = new QLineEdit(this);
+     source->setPlaceholderText("Source folder or mounted camera card");
+@@ -180,7 +170,30 @@
+     sourceRow->addWidget(browse);
+     sourceLayout->addLayout(sourceRow);
+ 
+-    auto* copiesLayout = section(2, "Destinations");
++    sections->addStretch();
++    auto* footer = new QHBoxLayout;
++    footer->setContentsMargins(24, 4, 24, 16);
++    footer->addStretch();
++    auto* backup = new QPushButton("Back up…", this);
++    backup->setObjectName("openBackup");
++    backup->setToolTip("Import footage to prepare a verified backup");
++    footer->addWidget(backup);
++    layout->addLayout(footer);
++
++    auto* backupDialog = new QDialog(this);
++    backupDialog->setObjectName("verifiedBackup");
++    backupDialog->setWindowTitle("Verified backup");
++    backupDialog->setWindowModality(Qt::WindowModal);
++    backupDialog->resize(650, 380);
++    auto* backupLayout = new QVBoxLayout(backupDialog);
++    backupLayout->setContentsMargins(16, 16, 16, 16);
++    backupLayout->setSpacing(12);
++    auto* backupSource = new QLabel(backupDialog);
++    backupSource->setObjectName("quiet");
++    backupSource->setTextFormat(Qt::PlainText);
++    backupSource->setWordWrap(true);
++    backupLayout->addWidget(backupSource);
++    auto* copiesLayout = section(backupLayout, "Destinations");
+     auto* copies = copiesLayout->parentWidget();
+     auto* copyName = new QLineEdit(this);
+     copyName->setAccessibleName("Copy folder name");
+@@ -224,8 +237,7 @@
+     validation->setWordWrap(true);
+     validation->setTextFormat(Qt::PlainText);
+     validation->setObjectName("quiet");
+-    auto* transferLayout = section(3, "Verify");
+-    sections->addStretch();
++    auto* transferLayout = section(backupLayout, "Verify");
+     auto* status = new QLabel(this);
+     status->setWordWrap(true);
+     status->setTextFormat(Qt::PlainText);
+@@ -248,6 +260,15 @@
+     actions->addWidget(cancel);
+     actions->addWidget(start);
+     transferLayout->addLayout(actions);
++    backupLayout->addStretch();
++    auto* close = new QPushButton("Close", backupDialog);
++    backupLayout->addWidget(close, 0, Qt::AlignRight);
++    connect(close, &QPushButton::clicked, backupDialog, &QDialog::reject);
++    connect(backup, &QPushButton::clicked, backupDialog, [=] {
++        const auto path = source->text();
++        backupSource->setText("Source: " + path);
++        backupDialog->open();
++    });
+ 
+     auto* watcher = new QFutureWatcher<IngestResult>(this);
+     auto* indexer = new QFutureWatcher<QStringList>(this);
+@@ -261,6 +282,9 @@
+     auto updatePlan = [=] {
+         const bool busy = watcher->isRunning();
+         const auto roots = paths();
++        backup->setEnabled(*indexed);
++        backup->setToolTip(*indexed ? "Set up a checksum-verified copy of the current source"
++                                    : "Import footage to prepare a verified backup");
+         copies->setEnabled(*indexed && !busy);
+         emptyDestinations->setVisible(roots.isEmpty());
+         destinations->setVisible(!roots.isEmpty());
+@@ -310,7 +334,7 @@
+             prompt.setText("Add “" + input.fileName() + "” to a project?");
+             auto* create = prompt.addButton("New project…", QMessageBox::AcceptRole);
+             auto* open = prompt.addButton("Open project…", QMessageBox::ActionRole);
+-            prompt.addButton("Ingest only", QMessageBox::RejectRole);
++            prompt.addButton("Continue without a project", QMessageBox::RejectRole);
+             prompt.exec();
+             if (prompt.clickedButton() == create || prompt.clickedButton() == open)
+                 chooseProject(prompt.clickedButton() == create);
+--- a/tests/ingest_link.cpp
++++ b/tests/ingest_link.cpp
+@@ -3,6 +3,8 @@
+ 
+ #include <QApplication>
+ #include <QDir>
++#include <QDialog>
++#include <QTreeWidget>
+ #include <QDragEnterEvent>
+ #include <QDropEvent>
+ #include <QDragMoveEvent>
+@@ -22,6 +24,7 @@
+     QApplication app(argc, argv);
+     QTemporaryDir temp;
+     if (!temp.isValid()) return 1;
++    qputenv("XDG_DATA_HOME", QFile::encodeName(temp.filePath("data")));
+     const auto folder = temp.filePath("Camera");
+     if (!QDir().mkdir(folder)) return 1;
+     const auto clip = folder + "/test.mov";
+@@ -49,6 +52,11 @@
+     widget.show();
+     auto* target = widget.findChild<QLabel*>("sourceDrop");
+     if (!target) return 1;
++    auto* backup = widget.findChild<QPushButton*>("openBackup");
++    auto* dialog = widget.findChild<QDialog*>("verifiedBackup");
++    auto* destinations = widget.findChild<QTreeWidget*>("ingestDestinations");
++    if (!backup || !dialog || !destinations || backup->isEnabled() || dialog->isVisible() ||
++        destinations->window() != dialog) return 1;
+     QMimeData mime;
+     mime.setUrls({QUrl::fromLocalFile(app.arguments().contains("--single-file") ? clip : folder)});
+     QDragEnterEvent enter(QPoint(5, 5), Qt::LinkAction, &mime, Qt::LeftButton, Qt::NoModifier);
+@@ -65,7 +73,34 @@
+         QApplication::processEvents();
+         QThread::msleep(5);
+     }
+-    return enter.isAccepted() && move.isAccepted() && drop.isAccepted() && refreshed == project.path() &&
++    if (!backup->isEnabled() || dialog->isVisible()) return 1;
++    backup->click();
++    if (!dialog->isVisible()) return 1;
++    if (app.arguments().size() == 1) {
++        const auto backupRoot = temp.filePath("Backup");
++        if (!QDir().mkdir(backupRoot)) return 1;
++        path = project.path();
++        auto* destination = new QTreeWidgetItem(destinations, {backupRoot});
++        destinations->setCurrentItem(destination);
++        QPushButton* start = nullptr;
++        QPushButton* report = nullptr;
++        for (auto* button : dialog->findChildren<QPushButton*>()) {
++            if (button->text() == "Start verified copy") start = button;
++            if (button->text() == "Open report folder") report = button;
++        }
++        if (!start || !report || !start->isEnabled()) return 1;
++        start->click();
++        deadline.restart();
++        while (!report->isVisible() && deadline.elapsed() < 5000) {
++            QApplication::processEvents();
++            QThread::msleep(5);
++        }
++        const auto records = project.transfers();
++        if (!report->isVisible() || !QFile::exists(backupRoot + "/Camera/test.mov") ||
++            records.size() != 1 || records.front().value(1) != "Verified" || !other.transfers().isEmpty()) return 1;
++    }
++    dialog->reject();
++    return !dialog->isVisible() && enter.isAccepted() && move.isAccepted() && drop.isAccepted() && refreshed == project.path() &&
+            project.clipPaths() == QStringList{clip} && other.clipPaths().isEmpty() &&
+            QFile::exists(clip) ? 0 : 1;
+ }

@@ -1,0 +1,90 @@
+/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.9.1/sdk.S1Srnm/vendor/usr/lib64/blackmagic/BlackmagicRAWSDK
+The Meson build system
+Version: 1.7.0
+Source dir: /workspace/scratch/85b6826418e9/next/OpenRoll-0.9.1
+Build dir: /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.9.1/build
+Build type: native build
+Project name: openroll
+Project version: 0.9.1
+C++ compiler for the host machine: c++ (gcc 14.2.0 "c++ (Debian 14.2.0-19) 14.2.0")
+C++ linker for the host machine: c++ ld.bfd 2.44
+Host machine cpu family: x86_64
+Host machine cpu: x86_64
+Found pkg-config: YES (/workspace/scratch/85b6826418e9/audit/sys/usr/bin/pkg-config) 1.8.1
+Run-time dependency qt6widgets found: YES 6.8.2
+Run-time dependency qt6concurrent found: YES 6.8.2
+Run-time dependency qt6multimedia found: YES 6.8.2
+Run-time dependency qt6sql found: YES 6.8.2
+Run-time dependency libvlc found: YES 3.0.24
+Build targets in project: 12
+
+openroll 0.9.1
+
+  User defined options
+    braw_test_clip: /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.9.1/vendor/BlackmagicRAW/BlackmagicRAWSpeedTest/profile.braw
+    buildtype     : release
+    sdk_root      : /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.9.1/vendor/usr/lib64/blackmagic/BlackmagicRAWSDK
+
+Found ninja-1.12.1 at /workspace/scratch/85b6826418e9/audit/sys/usr/bin/ninja
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.9.1/build'
+[1/31] Compiling C++ object libopenroll-raw.a.p/src_raw.cpp.o
+[2/31] Linking static target libopenroll-raw.a
+[3/31] Compiling C++ object openroll.p/src_new_project.cpp.o
+[4/31] Compiling C++ object libopenroll-playback.a.p/src_vlc.cpp.o
+../../../../../next/OpenRoll-0.9.1/src/vlc.cpp: In member function ‘void VlcPlayback::step(int)’:
+../../../../../next/OpenRoll-0.9.1/src/vlc.cpp:116:53: warning: ‘float libvlc_media_player_get_fps(libvlc_media_player_t*)’ is deprecated [-Wdeprecated-declarations]
+  116 |         const auto fps = libvlc_media_player_get_fps(state->player);
+      |                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~
+In file included from /workspace/scratch/85b6826418e9/audit/sys/usr/include/vlc/vlc.h:51,
+                 from ../../../../../next/OpenRoll-0.9.1/src/vlc.cpp:4:
+/workspace/scratch/85b6826418e9/audit/sys/usr/include/vlc/deprecated.h:50:18: note: declared here
+   50 | LIBVLC_API float libvlc_media_player_get_fps( libvlc_media_player_t *p_mi );
+      |                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+[5/31] Compiling C++ object libopenroll-project.a.p/src_project.cpp.o
+[6/31] Compiling C++ object openroll.p/src_main.cpp.o
+[7/31] Compiling C++ object libopenroll-proxy.a.p/src_proxy.cpp.o
+[8/31] Linking static target libopenroll-proxy.a
+[9/31] Compiling C++ object libopenroll-ingest.a.p/src_ingest.cpp.o
+[10/31] Linking static target libopenroll-ingest.a
+[11/31] Compiling C++ object libopenroll-project.a.p/src_media_scan.cpp.o
+[12/31] Linking static target libopenroll-project.a
+[13/31] Compiling C++ object openroll.p/src_media.cpp.o
+[14/31] Compiling C++ object vlc-test.p/tests_vlc.cpp.o
+[15/31] Compiling C++ object openroll.p/src_ingest_widget.cpp.o
+[16/31] Compiling C++ object libopenroll-playback.a.p/src_playback.cpp.o
+[17/31] Linking static target libopenroll-playback.a
+[18/31] Compiling C++ object proxy-test.p/tests_proxy.cpp.o
+[19/31] Linking target vlc-test
+[20/31] Compiling C++ object openroll.p/src_proxy_widget.cpp.o
+[21/31] Compiling C++ object new-project-test.p/tests_new_project.cpp.o
+[22/31] Linking target proxy-test
+[23/31] Compiling C++ object ingest-test.p/tests_ingest.cpp.o
+[24/31] Linking target openroll
+[25/31] Linking target ingest-test
+[26/31] Compiling C++ object braw-test.p/tests_braw.cpp.o
+[27/31] Compiling C++ object project-test.p/tests_project.cpp.o
+[28/31] Linking target project-test
+[29/31] Linking target braw-test
+[30/31] Compiling C++ object new-project-test.p/src_new_project.cpp.o
+[31/31] Linking target new-project-test
+INFO: autodetecting backend as ninja
+INFO: calculating backend command to run: /workspace/scratch/85b6826418e9/audit/sys/usr/bin/ninja -C /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.9.1/build
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.9.1/build'
+ninja: no work to do.
+1/6 Verified ingest and failure recovery OK               0.02s
+2/6 New project form validation          OK               0.05s
+3/6 window and workspace navigation      OK               0.32s
+4/6 Media scan and project persistence   OK               0.78s
+5/6 BRAW rendering and transport         OK               1.62s
+6/6 BRAW to ProRes Proxy export          OK               1.73s
+
+Ok:                 6   
+Expected Fail:      0   
+Fail:               0   
+Unexpected Pass:    0   
+Skipped:            0   
+Timeout:            0   
+
+Full log written to /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.9.1/build/meson-logs/testlog.txt
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()

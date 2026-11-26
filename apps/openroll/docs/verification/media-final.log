@@ -1,0 +1,28 @@
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.5.0/build'
+[1/9] Compiling C++ object project-test.p/tests_project.cpp.o
+[2/9] Compiling C++ object libopenroll-project.a.p/src_media_scan.cpp.o
+[3/9] Compiling C++ object openroll.p/src_main.cpp.o
+[4/9] Compiling C++ object libopenroll-project.a.p/src_project.cpp.o
+[5/9] Linking static target libopenroll-project.a
+[6/9] Linking target project-test
+[7/9] Compiling C++ object openroll.p/src_ingest_widget.cpp.o
+[8/9] Compiling C++ object openroll.p/src_media.cpp.o
+[9/9] Linking target openroll
+INFO: autodetecting backend as ninja
+INFO: calculating backend command to run: /workspace/scratch/85b6826418e9/audit/sys/usr/bin/ninja -C /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.5.0/build
+ninja: Entering directory `/workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.5.0/build'
+ninja: no work to do.
+1/4 Verified ingest and failure recovery OK              0.02s
+2/4 window lifecycle                     OK              0.26s
+3/4 Media scan and project persistence   OK              0.54s
+4/4 BRAW rendering and transport         OK              1.37s
+
+Ok:                 4   
+Expected Fail:      0   
+Fail:               0   
+Unexpected Pass:    0   
+Skipped:            0   
+Timeout:            0   
+
+Full log written to /workspace/scratch/85b6826418e9/audit/preview-cache/openroll/preview-0.5.0/build/meson-logs/testlog.txt
+This plugin does not support propagateSizeHints()

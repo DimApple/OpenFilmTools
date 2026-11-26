@@ -1,0 +1,7 @@
+# Current architecture
+
+Open Gate is a TypeScript/React app built with Vite. The browser renderer starts at `src/main.tsx`. `src/App.tsx` coordinates tabs, project services, workspace shell, and access restrictions. Electron 45.4.1 starts at `desktop/main.cjs` and serves the build under `opengate://desktop/`. Its window has sandboxing and context isolation enabled and Node integration disabled. There is no preload or general filesystem IPC.
+
+`src/model/types.ts` defines the shared project, including scene and shot associations and storyboard frame IDs. Zustand in `src/store/project.ts` owns the active project. `src/script/session.ts` bridges ProseMirror state and project data. Dexie/IndexedDB in `src/store/db.ts` stores projects, media blobs, collaboration metadata, and file handles. Migration runs at the storage/import boundaries. Portable `.opengate` bundles move between origins. The desktop and web databases are origin-specific.
+
+`src/App.tsx` mounts normal tabs conditionally. Write deliberately stays mounted, hidden, under local Plan to preserve editor state. Plan can mount shots and storyboard together. Several tab modules are statically loaded. Layout choices are already separate from project data via localStorage. Optional collaboration and link handling live in `src/sync/`. The web path generates a service worker, while the installed desktop path loads local bundled assets.

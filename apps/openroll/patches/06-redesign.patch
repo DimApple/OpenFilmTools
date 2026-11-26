@@ -1,0 +1,585 @@
+--- a/src/media.cpp
++++ b/src/media.cpp
+@@ -18,6 +18,8 @@
+ #include <QMap>
+ #include <QMessageBox>
+ #include <QPainter>
++#include <QPainterPath>
++#include <QShortcut>
+ #include <QPushButton>
+ #include <QSignalBlocker>
+ #include <QSettings>
+@@ -40,22 +42,44 @@
+     return QString("%1:%2").arg(whole / 60).arg(whole % 60, 2, 10, QChar('0'));
+ }
+ 
++QIcon clipViewIcon(bool grid)
++{
++    QPixmap bitmap(32, 32);
++    bitmap.setDevicePixelRatio(2);
++    bitmap.fill(Qt::transparent);
++    QPainter painter(&bitmap);
++    const QColor ink(OpenRollTheme::tokens.value("@text"));
++    if (grid) {
++        for (int y : {3, 9})
++            for (int x : {3, 9}) painter.fillRect(x, y, 4, 4, ink);
++    } else {
++        painter.setPen(QPen(ink, 1.5));
++        for (int y : {4, 8, 12}) painter.drawLine(3, y, 13, y);
++    }
++    return QIcon(bitmap);
++}
++
+ class ClipCard final : public QStyledItemDelegate {
+ public:
+     using QStyledItemDelegate::QStyledItemDelegate;
+-    QSize sizeHint(const QStyleOptionViewItem&, const QModelIndex&) const override { return {220, 116}; }
++    QSize sizeHint(const QStyleOptionViewItem&, const QModelIndex&) const override { return {164, 150}; }
+ 
+     void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override
+     {
+         painter->save();
+         painter->setRenderHint(QPainter::Antialiasing);
+-        const QRect card = option.rect.adjusted(2, 2, -2, -2);
++        const QRect card = option.rect.adjusted(4, 4, -4, -4);
+         const bool selected = option.state & QStyle::State_Selected;
+         painter->setPen(Qt::NoPen);
+-        painter->setBrush(QColor("#252330"));
+-        painter->drawRoundedRect(card, 7, 7);
+-        const QRect picture = card.adjusted(2, 2, -2, -27);
+-        painter->fillRect(picture, QColor("#22212b"));
++        if (option.state & QStyle::State_MouseOver) {
++            painter->setBrush(QColor(OpenRollTheme::tokens.value("@raised")));
++            painter->drawRoundedRect(card, 10, 10);
++        }
++        const int width = card.width() - 8;
++        const QRect picture(card.x() + 4, card.y() + 8, width, width * 9 / 16);
++        QPainterPath boundary;
++        boundary.addRoundedRect(picture, 8, 8);
++        painter->fillPath(boundary, QColor(OpenRollTheme::tokens.value("@bg")));
+         const auto icon = qvariant_cast<QIcon>(index.data(Qt::DecorationRole));
+         if (!icon.isNull()) {
+             const auto pixmap = icon.pixmap(QSize(160, 90));
+@@ -63,25 +87,27 @@
+             const QRect target(QPoint(picture.center().x() - size.width() / 2,
+                                       picture.center().y() - size.height() / 2), size);
+             painter->save();
+-            painter->setClipRect(picture);
++            painter->setClipPath(boundary);
+             painter->setRenderHint(QPainter::SmoothPixmapTransform);
+             painter->drawPixmap(target, pixmap);
+             painter->restore();
+         } else {
+-            painter->setPen(QColor("#b4adbf"));
++            painter->setPen(QColor(OpenRollTheme::tokens.value("@muted")));
+             painter->drawText(picture, Qt::AlignCenter, "No thumbnail");
+         }
+         const QRect caption(card.x() + 9, picture.bottom() + 2, card.width() - 18, 22);
+         const auto time = index.data(durationRole).toString();
+         const int timeWidth = option.fontMetrics.horizontalAdvance(time);
+-        painter->setPen(QColor("#efedf4"));
++        painter->setPen(QColor(OpenRollTheme::tokens.value("@text")));
+         painter->drawText(caption.adjusted(0, 0, -timeWidth - 9, 0), Qt::AlignVCenter,
+             option.fontMetrics.elidedText(index.data().toString(), Qt::ElideMiddle, caption.width() - timeWidth - 9));
+-        painter->setPen(QColor("#c1b9ce"));
++        painter->setPen(QColor(OpenRollTheme::tokens.value("@muted")));
+         painter->drawText(caption, Qt::AlignRight | Qt::AlignVCenter, time);
+         painter->setBrush(Qt::NoBrush);
+-        painter->setPen(QPen(selected ? QColor("#b27af3") : QColor("#45404f"), selected ? 2 : 1));
+-        painter->drawRoundedRect(card.adjusted(1, 1, -1, -1), 7, 7);
++        if (selected) {
++            painter->setPen(QPen(QColor(OpenRollTheme::tokens.value("@accent")), 2));
++            painter->drawRoundedRect(card, 10, 10);
++        }
+         painter->restore();
+     }
+ };
+@@ -98,13 +124,19 @@
+     : QWidget(parent), projectChanged(std::move(notifyProject)), viewer(playback)
+ {
+     auto* layout = new QVBoxLayout(this);
+-    layout->setContentsMargins(8, 4, 8, 5);
+-    layout->setSpacing(7);
++    layout->setContentsMargins(12, 12, 12, 12);
++    layout->setSpacing(8);
+     auto* split = new QSplitter(Qt::Horizontal, this);
+     split->setChildrenCollapsible(false);
++    split->setHandleWidth(8);
+     sourcePanel = panel(split);
+     auto* left = new QVBoxLayout(sourcePanel);
+-    left->addWidget(sectionLabel("Project media", sourcePanel));
++    left->setContentsMargins(12, 12, 12, 12);
++    left->setSpacing(8);
++    auto* mediaHeading = new QHBoxLayout;
++    mediaHeading->addWidget(sectionLabel("Project media", sourcePanel));
++    mediaHeading->addStretch();
++    left->addLayout(mediaHeading);
+     folders = new QTreeWidget(sourcePanel);
+     folders->setObjectName("mediaFolders");
+     folders->setAccessibleName("Project media folders");
+@@ -114,20 +146,20 @@
+     auto* root = new QTreeWidgetItem(folders, {"All clips"});
+     root->setIcon(0, style()->standardIcon(QStyle::SP_DirIcon));
+     folders->setCurrentItem(root);
+-    add = new QPushButton("Add media folder…", sourcePanel);
++    add = new QPushButton("+", sourcePanel);
++    add->setObjectName("addMedia");
++    add->setFixedSize(24, 24);
++    add->setAccessibleName("Add media folder");
++    add->setToolTip("Add media folder…");
+     add->setEnabled(false);
+-    setAction(add, "primary");
+-    left->addWidget(add);
+-    auto* create = new QPushButton("New project…", sourcePanel);
+-    auto* open = new QPushButton("Open project…", sourcePanel);
+-    left->addWidget(create);
+-    left->addWidget(open);
+-    connect(create, &QPushButton::clicked, this, [this] { chooseProject(true); });
+-    connect(open, &QPushButton::clicked, this, [this] { chooseProject(false); });
++    setAction(add, "ghost");
++    mediaHeading->addWidget(add);
+     auto* cancel = new QPushButton("Cancel scan", sourcePanel);
++    setAction(cancel, "link");
+     cancel->hide();
+-    left->addWidget(cancel);
++    mediaHeading->addWidget(cancel);
+     status = new QLabel("Create or open a project to add media.", sourcePanel);
++    status->setObjectName("quiet");
+     status->setTextFormat(Qt::PlainText);
+     status->setWordWrap(true);
+     left->addWidget(status);
+@@ -137,6 +169,8 @@
+     monitor->setContentsMargins(0, 0, 0, 0);
+     monitor->addWidget(viewer);
+     inspector = panel(split);
++    inspector->setFixedWidth(280);
++    inspector->hide();
+     auto* right = new QVBoxLayout(inspector);
+     right->addWidget(sectionLabel("Metadata", inspector));
+     metadata = new QTreeWidget(inspector);
+@@ -148,22 +182,40 @@
+     metadata->setSelectionMode(QAbstractItemView::NoSelection);
+     metadata->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+     right->addWidget(metadata, 1);
++    auto* toggle = viewer->findChild<QToolButton*>("metadataToggle");
++    const auto visible = QSettings("OpenRoll", "OpenRoll").value("media/showMetadata", false).toBool();
++    toggle->setChecked(visible);
++    inspector->setVisible(visible);
++    connect(toggle, &QToolButton::toggled, this, [this, toggle](bool enabled) {
++        QSettings("OpenRoll", "OpenRoll").setValue("media/showMetadata", enabled);
++        inspector->setVisible(enabled && toggle->isVisible());
++    });
++    auto* metadataShortcut = new QShortcut(QKeySequence("I"), viewer);
++    metadataShortcut->setContext(Qt::WidgetWithChildrenShortcut);
++    connect(metadataShortcut, &QShortcut::activated, toggle, [toggle] {
++        if (toggle->isVisible()) toggle->click();
++    });
+     split->setStretchFactor(1, 1);
+-    split->setSizes({215, 715, 235});
+-    sourcePanel->setMinimumWidth(155);
+-    inspector->setMinimumWidth(180);
++    split->setSizes({240, 715, 280});
++    sourcePanel->setMinimumWidth(200);
++    sourcePanel->setMaximumWidth(320);
+     layout->addWidget(split, 1);
+ 
+     strip = panel(this);
+     auto* stripLayout = new QVBoxLayout(strip);
+-    stripLayout->setContentsMargins(10, 6, 10, 6);
+-    stripLayout->setSpacing(5);
++    stripLayout->setContentsMargins(12, 8, 12, 8);
++    stripLayout->setSpacing(8);
+     auto* tools = new QHBoxLayout;
+     auto* views = new QButtonGroup(strip);
+     auto* cards = new QToolButton(strip);
+     auto* rows = new QToolButton(strip);
+-    cards->setText("▦");
+-    rows->setText("☰");
++    auto* viewSwitch = new QWidget(strip);
++    viewSwitch->setObjectName("clipViews");
++    auto* viewLayout = new QHBoxLayout(viewSwitch);
++    viewLayout->setContentsMargins(3, 3, 3, 3);
++    viewLayout->setSpacing(0);
++    cards->setIcon(clipViewIcon(true));
++    rows->setIcon(clipViewIcon(false));
+     cards->setAccessibleName("Thumbnail view");
+     rows->setAccessibleName("List view");
+     cards->setToolTip("Thumbnail view");
+@@ -172,24 +224,30 @@
+         button->setObjectName("viewToggle");
+         button->setCheckable(true);
+         views->addButton(button);
+-        tools->addWidget(button);
+-    }
++        button->setIconSize(QSize(16, 16));
++        button->setFixedSize(28, 22);
++        viewLayout->addWidget(button);
++    }
++    tools->addWidget(viewSwitch);
+     cards->setChecked(true);
+     filter = new QLineEdit(strip);
+-    filter->setPlaceholderText("Search clips…");
++    filter->setPlaceholderText("Search clips");
++    filter->setFixedHeight(28);
+     filter->setAccessibleName("Search clips");
+     filter->setClearButtonEnabled(true);
+     filter->setMaximumWidth(310);
+     tools->addWidget(filter, 1);
+     tools->addStretch();
+     clipCount = new QLabel("0 clips", strip);
++    clipCount->setObjectName("quiet");
+     tools->addWidget(clipCount);
+     stripLayout->addLayout(tools);
+     media = new QListWidget(strip);
+     media->setObjectName("clipStrip");
+     media->setAccessibleName("Project clips");
+     media->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+-    media->setSpacing(3);
++    media->setSpacing(0);
++    media->setMouseTracking(true);
+     stripLayout->addWidget(media);
+     layout->addWidget(strip);
+ 
+@@ -202,7 +260,7 @@
+         media->setWrapping(false);
+         media->setMovement(QListView::Static);
+         media->setIconSize(thumbnails ? QSize(160, 90) : QSize(45, 26));
+-        media->setFixedHeight(139);
++        media->setFixedHeight(164);
+     };
+     applyView(true);
+     connect(cards, &QToolButton::clicked, this, [applyView] { applyView(true); });
+@@ -232,8 +290,7 @@
+         cancel->hide();
+         add->setEnabled(true);
+         scanning = false;
+-        create->setEnabled(true);
+-        open->setEnabled(true);
++        add->show();
+         try {
+             status->setText(watcher->result());
+             refreshMedia();
+@@ -260,8 +317,7 @@
+         status->setText("Scanning " + canonical + "…");
+         add->setEnabled(false);
+         scanning = true;
+-        create->setEnabled(false);
+-        open->setEnabled(false);
++        add->hide();
+         cancel->setEnabled(true);
+         cancel->show();
+         watcher->setFuture(QtConcurrent::run(&worker, [this, path, canonical] {
+@@ -339,7 +395,13 @@
+ void MediaWorkspace::setMonitorMode(bool enabled)
+ {
+     sourcePanel->setVisible(!enabled);
+-    inspector->setVisible(!enabled);
++    auto* toggle = viewer->findChild<QToolButton*>("metadataToggle");
++    toggle->setVisible(!enabled);
++    inspector->setVisible(!enabled && toggle->isChecked());
++    auto* counter = viewer->findChild<QLabel*>("quiet");
++    counter->setProperty("monitor", enabled);
++    counter->style()->unpolish(counter);
++    counter->style()->polish(counter);
+     strip->setVisible(!enabled);
+ }
+ 
+@@ -430,7 +492,8 @@
+ {
+     metadata->clear();
+     if (!clip) {
+-        auto* empty = new QTreeWidgetItem(metadata, {"Select a clip"});
++        auto* empty = new QTreeWidgetItem(metadata, {"Select a clip to see its metadata"});
++        empty->setTextAlignment(0, Qt::AlignHCenter);
+         empty->setFirstColumnSpanned(true);
+         return;
+     }
+@@ -445,5 +508,12 @@
+     for (const auto& value : values) {
+         auto* item = new QTreeWidgetItem(metadata, value);
+         item->setToolTip(1, value.at(1));
+-    }
+-}
++        item->setForeground(0, QColor(OpenRollTheme::tokens.value("@muted")));
++        auto* label = new QLabel(value.at(1), metadata);
++        label->setObjectName("metadataValue");
++        label->setTextFormat(Qt::PlainText);
++        label->setTextInteractionFlags(Qt::TextSelectableByMouse);
++        label->setWordWrap(true);
++        metadata->setItemWidget(item, 1, label);
++    }
++}
+--- a/src/playback.cpp
++++ b/src/playback.cpp
+@@ -8,10 +8,12 @@
+ #include <QDebug>
+ #include <QDialog>
+ #include <QDir>
+-#include <QFileDialog>
++#include <QFontDatabase>
++#include <QToolButton>
+ #include <QFileInfo>
+ #include <QFutureWatcher>
+ #include <QHBoxLayout>
++#include <QGridLayout>
+ #include <QIcon>
+ #include <QIODevice>
+ #include <QLabel>
+@@ -30,12 +32,19 @@
+ public:
+     using QWidget::QWidget;
+     QImage image;
++    QString empty = "Select a clip";
+     QSize displaySize;
+     void paintEvent(QPaintEvent*) override
+     {
+         QPainter painter(this);
+         painter.fillRect(rect(), Qt::black);
+-        if (image.isNull()) return;
++        if (image.isNull()) {
++            if (!empty.isEmpty()) {
++                painter.setPen(QColor(OpenRollTheme::tokens.value("@muted")));
++                painter.drawText(rect(), Qt::AlignCenter, empty);
++            }
++            return;
++        }
+         const auto size = displaySize.scaled(this->size(), Qt::KeepAspectRatio);
+         painter.setRenderHint(QPainter::SmoothPixmapTransform);
+         painter.drawImage(QRect(QPoint((width() - size.width()) / 2, (height() - size.height()) / 2),
+@@ -46,16 +55,16 @@
+ namespace {
+ constexpr size_t bufferLimit = 5;
+ 
+-enum class TransportIcon { Previous, Play, Pause, Stop, Next, Fullscreen };
+-
+-QIcon transportIcon(TransportIcon symbol)
++enum class TransportIcon { Previous, Play, Pause, Stop, Next, Fullscreen, Speaker, Metadata };
++
++QIcon transportIcon(TransportIcon symbol, const char* tone = "@text")
+ {
+     QPixmap bitmap(40, 40);
+     bitmap.fill(Qt::transparent);
+     bitmap.setDevicePixelRatio(2);
+     QPainter p(&bitmap);
+     p.setRenderHint(QPainter::Antialiasing);
+-    const QColor ink("#f0ecf7");
++    const QColor ink(OpenRollTheme::tokens.value(tone));
+     p.setBrush(ink);
+     p.setPen(Qt::NoPen);
+     switch (symbol) {
+@@ -77,6 +86,18 @@
+     case TransportIcon::Stop:
+         p.drawRect(QRectF(4.5, 4.5, 11, 11));
+         break;
++    case TransportIcon::Metadata:
++        p.setBrush(Qt::NoBrush);
++        p.setPen(QPen(ink, 1.5));
++        p.drawRoundedRect(QRectF(3, 4, 14, 12), 2, 2);
++        p.drawLine(12, 4, 12, 16);
++        break;
++    case TransportIcon::Speaker:
++        p.drawPolygon(QPolygonF{{3, 8}, {6, 8}, {10, 4}, {10, 16}, {6, 12}, {3, 12}});
++        p.setBrush(Qt::NoBrush);
++        p.setPen(QPen(ink, 1.5));
++        p.drawArc(QRectF(7, 4, 10, 12), -55 * 16, 110 * 16);
++        break;
+     case TransportIcon::Fullscreen:
+         p.setPen(QPen(ink, 1.5, Qt::SolidLine, Qt::SquareCap, Qt::MiterJoin));
+         p.setBrush(Qt::NoBrush);
+@@ -91,8 +112,8 @@
+ 
+ void updatePlayIcon(QPushButton* button, bool playing)
+ {
+-    static const auto playIcon = transportIcon(TransportIcon::Play);
+-    static const auto pauseIcon = transportIcon(TransportIcon::Pause);
++    static const auto playIcon = transportIcon(TransportIcon::Play, "@onAccent");
++    static const auto pauseIcon = transportIcon(TransportIcon::Pause, "@onAccent");
+     const auto& icon = playing ? pauseIcon : playIcon;
+     if (button->icon().cacheKey() != icon.cacheKey()) button->setIcon(icon);
+ }
+@@ -113,22 +134,28 @@
+     timer.setInterval(8);
+     connect(&timer, &QTimer::timeout, this, [this] { tick(); });
+     auto* layout = new QVBoxLayout(this);
+-    layout->setContentsMargins(12, 10, 12, 10);
+-    layout->setSpacing(10);
+-    auto* openButton = new QPushButton("Open media…", this);
+-    auto* heading = new QHBoxLayout;
+-    connect(openButton, &QPushButton::clicked, this, [this] {
+-        const auto file = QFileDialog::getOpenFileName(this, "Open media", {}, "Media (*.braw *.BRAW *.mp4 *.mov *.mxf *.mkv *.wav *.flac *.mp3 *.m4a);;All files (*)");
+-        if (!file.isEmpty()) open(file);
+-    });
+-    status = new QLabel("Choose a video, audio, or Blackmagic RAW clip.", this);
++    layout->setContentsMargins(8, 8, 8, 8);
++    layout->setSpacing(4);
++    auto* toolbar = new QWidget(this);
++    toolbar->setFixedHeight(32);
++    auto* heading = new QHBoxLayout(toolbar);
++    heading->setContentsMargins(0, 0, 0, 0);
++    auto* metadata = new QToolButton(toolbar);
++    metadata->setObjectName("metadataToggle");
++    metadata->setIcon(transportIcon(TransportIcon::Metadata));
++    metadata->setIconSize(QSize(16, 16));
++    metadata->setFixedSize(28, 28);
++    metadata->setCheckable(true);
++    metadata->setAccessibleName("Toggle metadata");
++    metadata->setToolTip("Metadata (I)");
++    status = new QLabel(this);
+     status->setTextFormat(Qt::PlainText);
+-    status->setWordWrap(true);
++    status->setWordWrap(false);
+     status->setMinimumWidth(0);
+     status->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+     heading->addWidget(status, 1);
+-    heading->addWidget(openButton, 0, Qt::AlignTop);
+-    layout->addLayout(heading);
++    heading->addWidget(metadata);
++    layout->addWidget(toolbar);
+     surface = new VideoSurface(this);
+     surface->setObjectName("videoSurface");
+     surface->setMinimumSize(260, 148);
+@@ -146,22 +173,35 @@
+     connect(timeline, &QSlider::actionTriggered, this, [this, seekTimeline](int action) {
+         if (!timeline->isSliderDown() && action != QAbstractSlider::SliderMove) seekTimeline();
+     });
+-    auto* timeRow = new QHBoxLayout;
++    timeline->setFixedHeight(20);
++    layout->addWidget(timeline);
++    auto* controlRow = new QWidget(this);
++    controlRow->setFixedHeight(44);
++    auto* zones = new QGridLayout(controlRow);
++    zones->setContentsMargins(0, 0, 0, 0);
++    zones->setHorizontalSpacing(8);
++    zones->setColumnStretch(0, 1);
++    zones->setColumnStretch(2, 1);
+     position = new QLabel(this);
+     position->setObjectName("quiet");
++    position->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
++    position->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+     position->setAccessibleName("Elapsed time and duration, hours minutes seconds frames");
+-    timeRow->addWidget(timeline, 1);
+-    timeRow->addWidget(position);
+-    layout->addLayout(timeRow);
++    zones->addWidget(position, 0, 0);
+     auto* bar = new QHBoxLayout;
+-    layout->addLayout(bar);
+-    bar->addStretch();
++    bar->setSpacing(8);
++    zones->addLayout(bar, 0, 1, Qt::AlignCenter);
++    auto* sound = new QHBoxLayout;
++    sound->setSpacing(8);
++    zones->addLayout(sound, 0, 2, Qt::AlignRight);
++    layout->addWidget(controlRow);
+     auto addButton = [this, bar](TransportIcon icon, auto action) {
+         auto* button = new QPushButton(this);
+         button->setIcon(transportIcon(icon));
+         button->setIconSize(QSize(20, 20));
+-        button->setFixedSize(38, 34);
++        button->setFixedSize(32, 32);
+         button->setObjectName("transportButton");
++        setAction(button, "ghost");
+         bar->addWidget(button);
+         connect(button, &QPushButton::clicked, this, action);
+         return button;
+@@ -176,6 +216,8 @@
+     previous->setToolTip("Previous frame (,)");
+     addShortcut(",", [this] { step(-1); });
+     play = addButton(TransportIcon::Play, [this] { playPause(); });
++    play->setFixedSize(36, 36);
++    setAction(play, "primary");
+     play->setAccessibleName("Play or pause");
+     play->setToolTip("Play or pause (Space)");
+     addShortcut("Space", [this] { playPause(); });
+@@ -212,15 +254,19 @@
+     full->setAccessibleName("Fullscreen");
+     full->setToolTip("Fullscreen video (F) · Exit with Esc");
+     addShortcut("F", fullscreen);
+-    bar->addStretch();
+-    bar->addSpacing(8);
+-    bar->addWidget(new QLabel("Volume", this));
++    bar->removeWidget(full);
++    full->setFixedSize(28, 28);
++    auto* speaker = new QLabel(this);
++    speaker->setPixmap(transportIcon(TransportIcon::Speaker, "@muted").pixmap(16, 16));
++    speaker->setToolTip("Volume");
++    sound->addWidget(speaker);
+     volume = new QSlider(Qt::Horizontal, this);
+     volume->setAccessibleName("Volume");
+     volume->setRange(0, 100);
+     volume->setValue(80);
+-    volume->setMaximumWidth(110);
+-    bar->addWidget(volume);
++    volume->setFixedWidth(90);
++    sound->addWidget(volume);
++    sound->addWidget(full);
+     connect(volume, &QSlider::valueChanged, this, [this](int value) {
+         if (vlc) vlc->volume(value);
+         if (audio) audio->setVolume(value / 100.0);
+@@ -254,6 +300,7 @@
+     start = requested = 0;
+     playing = false;
+     clock.invalidate();
++    surface->empty.clear();
+     surface->image = {};
+     surface->update();
+     const QFileInfo mediaFile(file);
+@@ -273,6 +320,7 @@
+         return;
+     }
+     status->setText("Opening " + mediaFile.fileName() + "…");
++    status->setToolTip(mediaFile.fileName());
+     updateControls();
+     requestFrame();
+ }
+@@ -347,7 +395,8 @@
+             if (!decoder) {
+                 decoder = decoded.decoder;
+                 info = decoded.info;
+-                status->setText(QString("%1  ·  %2 × %3  ·  %4 fps  ·  TC %5")
++                status->setText(QFileInfo(path).fileName());
++                status->setToolTip(QString("%1  ·  %2 × %3  ·  %4 fps  ·  TC %5")
+                                     .arg(QFileInfo(path).fileName()).arg(info.size.width())
+                                     .arg(info.size.height()).arg(info.fps, 0, 'f', 3)
+                                     .arg(info.timecode.isEmpty() ? "Unavailable" : info.timecode)
+@@ -536,5 +585,6 @@
+     info = {};
+     setAction(status, "warning");
+     status->setText(message);
++    status->setToolTip(message);
+     updateControls();
+ }
+--- a/src/theme.hpp
++++ b/src/theme.hpp
+@@ -196,7 +196,17 @@
+ QToolButton#projectMenu[emptyProject="true"] { color: @muted; }
+ QToolButton#projectMenu:focus, QToolButton#viewToggle:focus { border-color: @accent; }
+ QTreeWidget#mediaFolders, QTreeWidget#metadataList, QListWidget#clipStrip { background: transparent; }
+-QPushButton#transportButton { padding: 0; border-color: @line; }
++QPushButton#transportButton { padding: 0; min-height: 0; border-radius: 16px; }
++QPushButton#transportButton[actionRole="primary"] { border-radius: 18px; }
++QPushButton#addMedia { padding: 0; min-height: 0; }
++QToolButton#metadataToggle { border: 1px solid transparent; border-radius: @rControl; }
++QToolButton#metadataToggle:checked { background: @accentSoft; }
++QToolButton#metadataToggle:focus { border-color: @accent; }
++QLabel#quiet[monitor="true"] { font-size: 14px; }
++QLabel#metadataValue { font-size: 12px; }
++QTreeWidget#mediaFolders::item { min-height: 20px; }
++QWidget#clipViews { background: @raised; border-radius: 14px; }
++QToolButton#viewToggle { padding: 0; border-radius: 11px; }
+ QPushButton#transportButton:focus { border-color: @accent; }
+ QTextEdit#exportResults { background: @bg; border: 0; border-radius: @rCard; font-size: 12px; }
+ QPlainTextEdit, QTextEdit {
+--- a/tests/braw.cpp
++++ b/tests/braw.cpp
+@@ -98,8 +98,9 @@
+                 require(buttons.size() == 5, "Expected five transport buttons.");
+                 QPushButton* fullscreen = nullptr;
+                 for (auto* button : buttons) {
+-                    require(button->size() == QSize(38, 34) && button->iconSize() == QSize(20, 20),
+-                            "Transport button sizes differ.");
++                    require(button->size() == (button->accessibleName() == "Fullscreen" ? QSize(28, 28) :
++                                button->accessibleName() == "Play or pause" ? QSize(36, 36) : QSize(32, 32)) && button->iconSize() == QSize(20, 20),
++                            "Transport button dimensions do not match its role.");
+                     if (button->accessibleName() == "Fullscreen") fullscreen = button;
+                 }
+                 require(fullscreen != nullptr, "Fullscreen button is missing.");
